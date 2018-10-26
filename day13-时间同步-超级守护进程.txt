@@ -1,0 +1,329 @@
+时间同步
+
+相关概念：
+UTC		--Coordinated Universal Time，世界统一时间，世界标准时间，国际协调时间。
+GMT		--Greenwich Mean Time，格林尼治标准时间，UTC是基于标准的GMT提供的准确时间，简单意义上，UTC时间即等同于GMT时间。
+RTC		--Real-Time Clock，实时时钟，实时时钟（Real-Time Clock）是PC主板上的晶振及相关电路组成的时钟电路的生成脉冲
+Localtime 		--本地时钟，即本地所在时区的当前时间	
+
+硬件时钟：在BIOS画面设定的时钟。
+系统时钟：kernel中的时钟。
+
+date
+	
+显示系统时间格式：
+# date +'%F %T'			--年月日时分秒
+2016-01-19 10:48:46
+# date +'%Y-%m-%d %H:%M:%S'	--年月日时分秒
+2016-01-19 10:48:47
+
+修改系统时间：
+# date -s 时间字符串
+例如只修改系统的日期，不修改时间（时分秒）
+# date -s 2015-09-02
+或只修改时间不修改日期
+# date -s 11:08:00
+当然也可以同时修改日期和时间
+# date -s "2015-09-18 04:53:00
+
+hwclock命令：		--修改硬件时间(hw=hardware)
+
+# hwclock -r		--读取硬件时间(bios时间)
+# hwclock -w		--把系统时间(软件时间)写到硬件时间
+# hwclock --set --date="07/07/16 10:19"（月/日/年 时:分:秒）	--设定硬件时间
+# hwclock --hctosys（hc代表硬件时间，sys代表系统时间）	--硬件时钟与系统时钟同步
+# hwclock --systohc					--系统时钟和硬件时钟同步
+
+系统时区：time-zone
+# cat /etc/sysconfig/clock		--查看系统当前时区，只对 hwclock 有效
+# tzselect				--查看全部时区和修改时区命令
+
+系统日期和时间存放文件路径：
+# cat /proc/driver/rtc 
+# cat /sys/class/rtc/rtc0/date
+# cat /sys/class/rtc/rtc0/time
+# cat /sys/class/rtc/rtc0/since_epoch 
+
+图形设置时间命令：
+# system-config-date			（不常用）
+
+如果你想同步公网的时间服务器，使用
+ntpdate  公网时间服务器域名或IP   【ntp (network time protocol.网络时间协议) 默认端口：123】
+
+下面三个是rhel默认的外网时间服务器
+0.rhel.pool.ntp.org
+1.rhel.pool.ntp.org
+2.rhel.pool.ntp.org
+
+这几个外网服务器的IP比较多，有些测试不能同步，有些可以，下面这个IP目前测试是OK的
+ntpdate 202.112.31.197
+ntpdate 0.rhel.pool.ntp.org
+ntpdate time.nist.gov
+ntpdate ntp.fudan.edu.cn	--或者去找一些其它的公网时间同步服务器，这个是复旦大学的一个时间服务器
+
+
+自己想要搭建时间同步服务器的话
+# vim /etc/ntp.conf
+
+restrict 10.0.0.0 mask 255.255.255.0 nomodify notrap --我这里就把18行的注释打开，并把网段改成了当前自己局域网的网段10.0.0.2，就表示在这个网段内能被时间同步
+
+# /etc/init.d/ntpd restart
+
+# netstat -ntlup |grep :123	--启动服务后，123端口就有监听了
+	
+# ntpdate 10.0.0.2		--你自己启动NTPD服务后，去同步别人会报socket被占用的错误
+26 Aug 14:42:52 ntpdate[7417]: the NTP socket is in use, exiting
+
+
+# ntpdate 10.0.0.2		--这是表示同步成功
+26 Aug 14:43:29 ntpdate[7117]: step time server 61.129.42.44 offset 146586394.753774 sec
+
+# ntpdate 10.0.0.2		--等待5分钟左右，就可以同步成功
+ 1 Sep 12:00:03 ntpdate[3127]: no server suitable for synchronization found
+	
+
+
+2，使用xinetd来做另一种时间（xinetd；超级守护进程）
+
+# yum install xinetd -y
+	
+# vim /etc/xinetd.d/time-dgram			--udp
+disable =  no
+
+# vim /etc/xinetd.d/time-stream 			--tcp
+disable =  no
+
+# /etc/init.d/xinetd restart
+
+# netstat -ntlup |grep :37
+tcp        0      0 :::37                       :::*                        LISTEN      5740/xinetd         
+udp        0      0 :::37                       :::*                                    5740/xinetd 
+
+# chkconfig xinetd on
+
+客户端要同步服务器用下面命令就可以了
+rdate -s 10.0.0.2
+
+
+总结:如果你想实现你公司服务器的所有时间与北京时间一致。可以用一台能上外网的服务器去同步公网上的时间服务器，然后把这台也配置成时间服务器，其它的机器通过内网定时同步就可以了。
+
+
+---------------------------------我是华丽的分割线------------------------------------------------
+
+
+xinetd服务	
+xinetd  (也叫inetd,super daemon，超级守护进程)
+什么是超级守护进程，它的作用是什么呢？
+
+打个比方，银行里还有一种窗口，提供综合服务，像汇款，转账，提款等业务；这种窗口附近也始终坐着一个人（xinet），她可能不提供具体的服务，提供具体服务的人在里面闲着聊天啊，喝茶啊，但是当有人来汇款时他会大声喊一句，小王，有人汇款啦，然后里面管汇款的小王会立马跑过来帮忙办完汇款业务。其他的人继续聊天，喝茶。这些负责具体业务的人我们就称之为超级守护进程。当然可能汇款人会有一些规则，可能不能往北京汇款，他就会提早告诉xinet，所以如果有人来汇款想汇往北京的话，管理员就直接告诉他这个我们这里办不到的，于是就根本不会去喊汇款员了，相当于提供了一层管理机制。
+针对这种窗口还存在多线程和单线程的区别：
+多线程：将所有用户的要求都提上来，里面的人都别闲着了，都一起干活吧；
+单线程：大家都排好队了，一个一个来，里面的人同一时间只有一个人在工作。
+
+xinetd服务安装命令：
+# yum install xinetd -y
+
+查询rpm包的安装信息：
+# rpm -qi xinetd-2.3.14-34.el6.x86_64
+Summary     : A secure replacement for inetd
+Description :
+Xinetd is a secure replacement for inetd, the Internet services
+daemon. Xinetd provides access control for all services based on the
+address of the remote host and/or on time of access and can prevent
+denial-of-access attacks. Xinetd provides extensive logging, has no
+limit on the number of server arguments, and lets you bind specific
+services to specific IP addresses on your host machine. Each service
+has its own specific configuration file for Xinetd; the files are
+located in the /etc/xinetd.d directory.
+
+
+
+查看该服务是否开机启动：
+# chkconfig --list  |grep xinetd	
+xinetd         	0:off	1:off	2:off	3:off	4:off	5:off	6:off
+
+# chkconfig xinetd on
+
+# chkconfig --list	--最后可以看到下面一段
+
+xinetd based services:
+	chargen-dgram: 	off
+	chargen-stream:	off
+	cvs:           	off
+	daytime-dgram: 	off
+	daytime-stream:	off
+	discard-dgram: 	off
+	discard-stream:	off
+	echo-dgram:    	off
+	echo-stream:   	off
+	rsync:         	off
+	tcpmux-server: 	off
+	tftp:          	on
+	time-dgram:    	off
+	time-stream:   	off
+
+xinetd 就类似于一个拖管服务，可以拖管一些其它的小服务。拖管后的好处就是可以使用xinetd强大的参数来控制这些服务，并且增强安全性。（比如一个小服务没有一些控制功能，但支持xinetd拖管，你就可以拖管并使用xinetd的参数来控制它)
+
+
+
+/etc/xinetd.conf	--主配置文件，一般不用配置，主要配置下面这个文件
+/etc/xinetd.d		--子配置文件目录
+
+
+# vim /etc/xinetd.d/rsync 
+
+service rsync
+{
+		disable = yes				--yes表示关闭，no表示开启
+		flags           = IPv6
+		socket_type     = stream		--使用tcp/udp
+		wait            = no			--并发连接
+		user            = root			--使用超级守护进程的用户
+		server          = /usr/bin/rsync	--启动程序路径
+		server_args     = --daemon		--启动参数
+		log_on_failure  += USERID		--和日志格式有关
+}
+
+
+
+一个服务启动，需要考虑下面这三点：
+1，用什么用户来启动
+2，启动命令是什么
+3，是否有启动参数
+
+
+例一：以sshd为例，把sshd拖管到xinetd下
+
+sshd服务也有配置文件，为/etc/ssh/sshd_config；但此配置文件功能有限，可以选择拖管sshd服务，来实现额外的功能
+
+# /etc/init.d/sshd stop
+
+
+# vim /etc/xinetd.d/ssh		--手动建立配置文件（此文件默认不存在）
+
+	service ssh
+	{
+		    disable = no
+		    socket_type = stream
+		    protocol = tcp
+		    wait = no
+		    user = root
+		    server = /usr/sbin/sshd
+		    server_args = -i
+	}
+
+
+
+# /etc/init.d/xinetd restart
+
+# lsof -i:22
+COMMAND  PID USER   FD   TYPE DEVICE SIZE/OFF NODE NAME
+xinetd  5472 root    5u  IPv6  58673      0t0  TCP *:ssh (LISTEN)
+	--查看22端口的进程，由sshd变为了xinetd就表示你拖管成功了
+
+
+例二：上面的例子并没有看出拖管与不拖管的区别
+下面在例一的基础上加上对IP或网段的访问控制功能，这个是sshd本身不具备的功能（除非写iptables)
+
+
+	service ssh
+	{
+		    disable = no
+		    socket_type = stream
+		    protocol = tcp
+		    wait = no
+		    user = root
+		    server = /usr/sbin/sshd
+		    server_args = -i
+		    only_from = 10.0.0.26 10.0.0.200		--表示只有这两个IP能连，其它都不能连这个ssh服务
+	}
+
+	service ssh
+	{
+		    disable = no
+		    socket_type = stream
+		    protocol = tcp
+		    wait = no
+		    user = root
+		    server = /usr/sbin/sshd
+		    server_args = -i
+		    no_access = 10.0.0.26 10.0.0.200		--只有这两个IP不能连，其它都可以
+	}
+
+	service ssh
+	{
+		    disable = no
+		    socket_type = stream
+		    protocol = tcp
+		    wait = no
+		    user = root
+		    server = /usr/sbin/sshd
+		    server_args = -i
+		    only_from = 10.0.0.0/24
+		    no_access = 10.0.0.200 10.0.0.26		--这表示只能10网段访问，但10网段里的10和26这两台也不能访问
+	}
+
+
+下面这个写法的结果为(10和26都不能连，把它们换顺序也结果一样）
+no_access = 10.0.0.0/24
+only_from = 10.0.0.10 10.0.0.26
+
+	
+例三：在例二的基础再加一些功能(man xinetd.conf)
+	1,控制这个服务最多只能3个连接，每个源IP只能1个连接
+	2,控制只能9：00到18：00才能ssh连接
+	3,指定日志记录到/var/log/xinetd_ssh.log里
+
+
+	service ssh
+	{
+		    disable = no
+		    socket_type = stream
+		    protocol = tcp
+		    wait = no
+		    user = root
+		    server = /usr/sbin/sshd
+		    server_args = -i
+		    instances = 3
+		    per_source = 1
+		    access_times = 9:00-18:00
+		    log_type = file /var/log/xinetd_ssh.log
+	}
+
+例四：修改ssh服务的连接端口
+	# vim /etc/xinetd.d/ssh
+	service ssh
+	{
+		    disable = no
+		    socket_type = stream
+		    protocol = tcp
+		    wait = no
+		    user = root
+		    server = /usr/sbin/sshd
+		    server_args = -i
+		    instances = 3
+		    per_source = 1
+		    access_times = 9:00-18:00
+		    log_type = file /var/log/xinetd_ssh.log
+		    port = 2222
+	}
+
+	# vim /etc/services
+	ssh		2222
+	ssh		2222		--这个文件里对应的也要改，man xinetd.conf里有说明
+
+
+
+	# /etc/init.d/xinetd restart
+
+	
+	客户端访问是要使用ssh 10.0.0.200 -p 2222，但我自己连自己不用加-p 2222，因为我默认就是用2222来连接。
+	这也就是说/etc/services里的端口也决定了你做为客户端去访问别人的默认端口
+
+	更多模板请参考：/usr/share/doc/xinetd-2.3.14/sample.conf
+	
+	
+	
+	
+	
+	

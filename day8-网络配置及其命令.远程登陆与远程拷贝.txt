@@ -1,0 +1,319 @@
+网络有关的基本配置命令
+
+# mii-tool eth0			--查看网卡状态,以前的虚拟机里不支持，现在vmware的版本里是支持的
+eth0: negotiated 100baseTx-FD flow-control, link ok	--代表网卡连接OK
+# mii-tool eth0
+eth0: no link			--代表网线和网卡没连
+--除了link ok和no link两种之外其它显示就可能是网卡没驱动，或者网卡松了等等
+
+# mii-tool eth1
+SIOCGMIIPHY on 'eth1' failed: Invalid argument		--物理连接是ok的，没有启用网卡
+# ifconfig eth1 up		--打开这个网卡
+# mii-tool eth1
+eth1: no link
+# ifconfig eth1 down	--关闭这个网卡
+# mii-tool eth1
+SIOCGMIIPHY on 'eth1' failed: Invalid argument
+
+
+# ethtool eth0		--查看网卡的工作模式等信息
+
+Link partner advertised auto-negotiation: Yes
+Speed: 100Mb/s
+Duplex: Full
+
+# ethtool -s eth0 speed 10 duplex half autoneg off	--改成10M/s的速率,半双工，关闭自动协商
+Advertised auto-negotiation: No
+Speed: 10Mb/s
+Duplex: Half
+
+# scp /soft/rhel-server-6.3-x86_64-dvd.iso 10.0.0.26:/root/Desktop/	--你可以在两种速率的情况下做一个scp的远程拷贝测试，可以明显看到速度的变化
+
+
+# ethtool -s eth0 speed 100 duplex full autoneg on	--再改回来
+
+
+ifconfig   查看当前的IP，网卡是否开启等信息
+ip addr  或ip a  也可以看IP信息
+
+# ifconfig 
+eth0      Link encap:Ethernet  HWaddr 10:C3:7B:69:48:B1  
+ inet addr:10.0.0.200  Bcast:10.0.0.255  Mask:255.255.255.0
+inet6 addr: fe80::12c3:7bff:fe69:48b1/64 Scope:Link
+UP BROADCAST RUNNING MULTICAST  MTU:1500  Metric:1
+RX packets:1375056 errors:0 dropped:0 overruns:0 frame:0
+TX packets:2596704 errors:0 dropped:0 overruns:0 carrier:0
+collisions:0 txqueuelen:1000 
+RX bytes:95088451 (90.6 MiB)  TX bytes:3348164310 (3.1 GiB)
+ Interrupt:30 Base address:0x8000 
+
+
+ping 10.0.0.192			--直接连续不中断ping一个IP 测试是否能通
+ping 8.8.8.8
+ping www.baidu.com		--域名
+
+ping -c 4 10.0.0.192			--只PING4次
+
+# ip neighbor  或 ip n   		--查看和你机器联系过的IP与MAC地址的对应
+
+
+uname 命令    打印当前系统相关信息（内核版本号、硬件架构、主机名称和操作系统类型等）
+
+选项：
+-a或--all：显示全部的信息； 
+-m或--machine：显示电脑类型； 
+-n或-nodename：显示在网络上的主机名称； 
+-r或--release：显示操作系统内核版本； 
+-s或--sysname：显示操作系统名称； 
+-v：显示操作系统的版本； 
+-p或--processor：输出处理器类型； 
+-i或--hardware-platform：输出硬件平台； 
+-o或--operating-system：输出操作系统名称； 
+--help：显示帮助； 
+--version：显示版本信息
+
+# uname -a			
+Linux qianyun.cluster.com 2.6.32-279.el6.x86_64 #1 SMP Wed Jun 13 18:24:36 EDT 2012 x86_64 x86_64 x86_64 GNU/Linux
+
+
+# uname -r
+2.6.32-279.el6.x86_64
+
+# uname -m
+x86_64
+
+
+# cat /etc/redhat-release 
+    1	CentOS release 6.5 (Final)
+
+# netstat -nt			--查看TCP连接	
+# netstat -ntl			--查看监听的TCP
+# netstat -ntlup		--查看监听的TCP和UDP，并且显示程序名
+
+n 代表以数字显示
+t 代表tcp
+u 代表udp
+l 代表listen（监听）
+p 代表program（程序）
+
+-------------------------------------------------------------------------------------------------
+
+修改服务器IP
+改服务器IP的方法：
+第一种：
+ifconfig eth0 10.0.0.200 netmask 255.255.255.0
+ifconfig eth0 10.0.0.200/24	--这种做法是马上生效，但重启系统后无效了
+
+
+如果你想IP重启也生效，那么需要配置网络服务的相关配置文件
+第二种:
+
+vim /etc/sysconfig/network-scripts/ifcfg-eth0 
+
+DEVICE=eth0			--定义设备号
+BOOTPROTO=dhcp			--定义获取IP的方式为dhcp（动态获取IP）
+ONBOOT=yes			--定义此网卡设备是否启动
+NM_CONTROLLED="no"		--改为no，表示不受NetworkManager此服务控制（NetworkManager是rhel6里新加的一个图形界面配置网络的服务，但对于技术人员来讲，不建议使用。以后你会接触到kvm虚拟机或rhcs红帽集群套装都会不支持该服务)
+
+----------------------------
+网络配置文件详解：
+# vim /etc/sysconfig/network-scripts/ifcfg-eth0
+DEVICE=eth0		--定义设备号
+BOOTPROTO=static		--定义获取IP的方式为static/none  静态IP
+IPADDR=10.0.0.200		--定义静态IP
+NETMASK=255.255.255.0	--定义子网掩码，写成PREFIX=24也可以	
+GATEWAY=10.0.0.1		--手动定义你的网关，就是route -n命令看到的默认网关	这一句也可以写到/etc/sysconfig/network这个文件下（是全局生效，就是对所有网卡都生效）
+ONBOOT=yes		--启动或者重启网络时，是否启动该设备，yes是启动，no是不启动	
+NM_CONTROLLED="no"	--启动或者重启网络时，是否启动该设备，yes是启动，no是不启动
+dns1=10.0.0.1
+dns2=8.8.8.8		--你也可以在这里配置你的DNS指向，如果不想配置在这也可以，你可以配置到/etc/resolv.conf文件里，百度提供的免费dns服务器地址是180.76.76.76
+
+网络相关命令：
+
+# /etc/init.d/NetworkManager stop	--关闭这个服务
+# chkconfig NetworkManager off	--设置这个服务开机不会自动启动
+
+# chkconfig network on		--设置这个服务开机自动启动
+# /etc/init.d/network restart	 
+或者service network restart		--重启网络服务
+
+几种常见的错误：
+ip冲突
+# /etc/init.d/network restart
+Shutting down interface eth0:                              [  OK  ]
+Shutting down loopback interface:                          [  OK  ]
+Bringing up loopback interface:                            [  OK  ]
+Bringing up interface eth0:  Error, some other host already uses address
+10.0.0.5.	
+
+
+DNS错误
+# ping -c 2 8.8.8.8
+PING 8.8.8.8 (8.8.8.8) 56(84) bytes of data.
+64 bytes from 8.8.8.8: icmp_seq=1 ttl=44 time=39.5 ms
+64 bytes from 8.8.8.8: icmp_seq=2 ttl=44 time=40.7 ms
+
+# ping www.baidu.com
+ping: unknown host www.baidu.comDNS2=8.8.8.8
+
+解决办法：
+# vim /etc/sysconfig/network-scripts/ifcfg-eth0 		加入后面两段代码
+DNS1=10.0.0.1
+DNS2=8.8.8.8
+
+或者
+# vim /etc/resolv.conf	加入后面两段代码
+nameserver 10.0.0.1
+nameserver 8.8.8.8
+
+然后重启网卡：
+# /etc/init.d/network restart
+
+虚拟ip：
+# ifconfig eth0:0 10.0.0.36 netmask 255.255.255.0	--在eth0的基础上虚拟出eth0:0的网卡
+
+# ifconfig eth0:1 10.0.0.37 netmask 255.255.255.0
+# ifconfig eth0:2 10.0.0.38 netmask 255.255.255.0
+
+手动修改物理地址（MAC）的方法：
+ifconfig eth0 hw ether 00:01:22:AB:EF:CD  
+
+
+vim /etc/sysconfig/network-scripts/ifcfg-eth0:0	 --虚拟的网卡重启后没了，想让他永久生效，手动写一个配置文件就可以了
+DEVICE=eth0:0
+BOOTPRO=static
+IPADDR=10.0.0.1
+NETMASK=255.255.255.0
+ONBOOT=yes
+NM_CONTROLLED="no"
+
+# cat /etc/sysconfig/network-scripts/ifcfg-eth0-range0	--一次性虚拟多个IP
+
+IPADDR_START=10.0.0.37		--虚拟的IP起始值
+IPADDR_END=10.0.0.50		--虚拟的IP结束值	
+NETMASK=255.255.255.0		--子网掩码
+CLONENUM_START=10		--指的是eth0:后的数字起始值
+
+
+关闭网卡的方法
+ifconfig eth0  down 
+ifdown eth0  
+
+开启网卡的方法
+ifconfig eth0  up
+ifup eth0
+
+重启网卡的方法
+# service network restart	重启网络服务（也可以理解为重启网卡）
+# service network stop 		停止网络服务
+# service network start		启动网络服务
+
+
+
+远程登录和远程拷贝
+1. ssh远程登录(Secure Shell)
+	
+# ssh 10.0.0.2				--默认以当前用户远程登陆
+The authenticity of host '10.0.0.2 (10.0.0.2)' can't be established.
+RSA key fingerprint is b1:70:27:ac:ad:f6:ab:35:00:5a:b7:ad:ad:e4:43:0a.
+Are you sure you want to continue connecting (yes/no)? yes 		 --第一次远程登陆会让你输入yes，因为它会加一个RSA值到当前用户家目录下的.ssh/known_hosts文件里，下次再ssh这台机，就不用再输入yes了
+
+10.0.0.2 ssh-rsa AAAAB3NzaC1yc2EAAAABIwAAAQEA/HQMabL2hR0qKrNxJU34WWLvKjnjT9FFbRYk5EcsZMNAFR+k0sXUT8YjSRNiAQlRfWNRp8Wbxh7XGvQ9YJpzxxkQA9LP+W/O4e+2TMKt3vfDLP0M6SWuykQ+aChpQokXouNGZsHo3Y1xa7ysgvV4CVAl6ItxjdeKkCy2oiArggnIiKYVtFg20Y44SzxH7ycdnLdj09ftIsZZlkC1Bld4x1i5QUmUkzJEgHsLj0rpe4U8gfbrhJw5m02Y6cE655XPpFxuP7VF/L8a8i0+SEKgwO8FfSUngKfn2YjKlgXKstyVJvK+nCKXRT6XNTNE5f5uSUIcEsWrTn+OPKfoClpJew==
+
+如果连接的时候报以下错误：
+
+# ssh 10.0.0.2
+@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
+@    WARNING: REMOTE HOST IDENTIFICATION HAS CHANGED!     @
+@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
+IT IS POSSIBLE THAT SOMEONE IS DOING SOMETHING NASTY!
+Someone could be eavesdropping on you right now (man-in-the-middle attack)!
+It is also possible that the RSA host key has just been changed.
+The fingerprint for the RSA key sent by the remote host is
+7f:7b:7e:55:bf:28:4b:be:34:22:1c:42:39:cc:f8:ff.
+Please contact your system administrator.
+Add correct host key in /root/.ssh/known_hosts to get rid of this message.
+Offending key in /root/.ssh/known_hosts:6
+RSA host key for 10.0.0.2 has changed and you have requested strict checking.
+Host key verification failed.
+
+--遇到此报错，有可能是因为104的IP被另一台电脑使用，就把/root/.ssh/known_hosts里关于2电脑的RSA KEY信息给删除掉  就可以再加了
+
+# ssh user1@10.0.0.2			--以用户user1远程登录
+
+# ssh 10.0.0.2 date			--直接调用2上的命令，但不能调图形
+root@10.0.0.2's password: 
+Sat Apr 10 14:37:05 CST 2010
+
+
+ssh 10.0.0.2 -X firefox		--图形调用2机器的firefox    
+
+ssh 10.0.0.2 -Y 			--登陆到2的主机后，可以任意调用图形   
+				--调图形要注意的是远程服务器要图形支持 
+
+ssh服务没启动：
+# ssh 10.0.0.2
+ssh: connect to host 10.0.0.2 port 22: Connection refused
+
+# netstat -ntlup | grep sshd		--没有输出，就是没开ssh服务
+
+# /etc/init.d/sshd start		--启动ssh服务
+# chkconfig sshd on
+
+ssh服务启动：
+# netstat -ntlup | grep sshd
+tcp        0      0 0.0.0.0:22                  0.0.0.0:*                   LISTEN      6840/sshd           
+tcp        0      0 :::22                       :::*                        LISTEN      6840/sshd
+
+----------------------------------------------------------------------------------------------------
+
+2. scp远程拷贝
+
+# scp /share/iso/rhel-5.4-server-i386-dvd.iso 10.0.0.2:/root/Desktop/		--把本机的一个ISO文件远程SCP到2的桌面
+
+# scp -r /share/iso/ 10.0.0.2:/root/Desktop/				--远程SCP目录时要用到-r参数 
+
+# scp 10.0.0.2:/root/Desktop/sn.txt /root/Desktop/  				--从远端拷到本端
+
+# scp  -r 10.0.0.2:/root/Desktop/ /root/Desktop/  				--拷目录也要加-r参数
+
+3. 绑定主机名
+你ssh另一台机器可能会卡上几秒钟，才会让你输入密码，解决方法:互相绑定主机名
+
+# hostname 					--打印出当前主机名
+	
+修改主机名三步：
+1. 临时修改hostname
+# hostname qianyun.com				--临时修改当前主机名
+或者
+# echo "qianyun.com" > /proc/sys/kernel/hostname
+	
+2. 全局的网络配置文件
+# vim /etc/sysconfig/network				--系统全局的网络配置文件
+HOSTNAME=qianyun.com				--永久修改当前主机名	FQDN（full qualified domain name)有些软件是要求主机名为fqdn格式，例如apache
+
+3. 写入hosts文件
+# vim /etc/hosts
+10.0.0.61       server61.com 				--在这里加上修改过的主机和IP对应
+10.0.0.2        qianyun.com
+
+问题:/etc/hosts里最好绑定你所管理里的所有服务器的IP与名字的对应，但如果服务器很多，如何做？
+1，脚本分发
+2，自动化运维工具，如puppet
+3, 内网DNS
+4，批量安装系统时，自动绑定
+
+对一个名字的查找顺序为先找/etc/hosts,再找dns
+
+
+
+
+
+作业：
+1.将192.168.1.55主机的/var/www/html/index.html目录下的所有内容都拷贝到自己电脑的/soft目录下
+2.创建两台虚拟机，并为两台虚拟机都绑定一个永久有效的主机名
+3.将创建的两台虚拟机互绑主机名
+
+
+
+

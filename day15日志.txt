@@ -1,0 +1,478 @@
+日志服务
+
+日志；记录系统或应用运行过程中的信息，通过日志我们可以查看到系统或应用在运行中的状态。
+
+日志服务名称；rsyslog（rhel6中叫rhel6，rhel5中叫syslog）
+
+syslog的配置文件路径：(rhel 6) /etc/rsyslog.conf
+		    : (rhel 5) /etc/syslog.conf
+
+使用下面的命令查看日志相关的配置信息：
+# man xinetd.conf		
+查找log_type
+
+log_type   determines where the service log output is sent. There are two formats:
+
+        SYSLOG  syslog_facility [syslog_level]
+        The  log  output  is  sent  to syslog at the specified facility. Possible facility names
+        include: daemon, auth, authpriv, user, mail, lpr, news, uucp,  ftp  local0-7.  Possible
+        level  names include: emerg, alert, crit, err, warning, notice, info, debug.  If a level
+        is not present, the messages will be recorded at the info level.
+
+log facility: 用来记录一种类型日志的日志设备
+
+daemon：守护进程相关的消息（内部服务器）
+auth：pam产生的日志
+authpriv：ssh,ftp等登录信息的验证消息
+user：用户程序产生的相关消息
+mail：内部邮件服务器相关的消息
+lpr：打印服务相关的消息
+news：新闻交换网络，基于uucp
+uucp：Unix-to-Unix Copy(UNIX至UNIX的拷贝)，Email前身
+ftp：ftp服务器相关的消息
+local0-7：用户自定义的消息 （local7 通常被Cisco和Windows服务器使用）
+
+log level: 日志级别，指定记录日志信息的详细程度
+
+info: Information （消息）		--最常见的级别，一些基本的说明
+notice: Notification （通知）		--除了info之外还需要注意的一些信息
+warn: Warnings （警示）			--提示信息，如果看到这个信息说明可能有问题出现
+err: Errors （错误）			--错误，重大的错误信息
+crit: Critical (关键）			--关键性错误，比err还要重要的错误
+alert: Alerts （报警）			--警告级别错误，如果看到这个说明你的应用已经出现很多重大错误，比alert更严重
+emerg: Emergency（紧急，疼痛）		--如果看到这个，那你的系统差不多就要挂了，一般是硬件出现问题才会报这个错误
+none：None（什么都不记录）		--不管出现什么错误，都不记录日志
+debug: Debugging （调试）		--调式日志，一般看不懂，不用此级别
+
+
+
+级别前面的符号含义：
+.	代表大于或等于此级别（最常用的）	
+.=	只等于此级别
+.!	不等于此级别
+
+
+日志配置文件的语法格式：
+日志设备.(连接符号)日志级别   日志处理方式(action)
+mail.info 	/var/log/maillog
+
+例题：
+将mail应用的日志记录到/var/log/mailog中，应该在/etc/syslog.conf中加入：
+# vim /etc/rsyslog.conf
+mail.info 	/var/log/maillog
+
+如果我要将news以及mail的日志都写入/var/log/mylog文件中，并且这两个应用的警告信息要额外写入到/var/log/my.log中，那么需要加入下面两行：
+# vim /etc/rsyslog.conf
+news.*;mail.*		/var/log/mylog		--如果是多个应用，则用“；”将应用隔开
+news.=warn;mail=warn	/var/log/my.log		--如果要指定一个级别的日志，则用“=”接上指定的日志等级
+
+如果我的/var/log/mylog文件需要记录除了cron和mail应用的所有日志信息，请添加：
+# vim /etc/rsyslog.conf
+*.*;mail;news.none	/var/log/mylog
+或者：
+*.*;mail.none;news.none	/var/log/mylog
+
+一些特殊的写法解析：
+
+*.emerg		*			--将所有应用出现的最严重的信息广播的形式发送给登录该系统的每一个用户
+mail.* 		-/var/log/maillog	--将mail应用的所有等级日志信息都写入到/var/log/maillog文件中
+
+第二行：mail.* 	  -/var/log/maillog 中在文件路径前方有一个“-”是，由于该服务产生的日志信息比较多，所有系统会先将该应用的日志保存到内存当中，等数据量够大的时候才写入到文件中去，这样有助于日志文件的访问性能，但是有一个缺点，由于内存只能临时保存数据，如果非正常关机，那么将会导致内存中的日志文件无法保存到文件当中，导致日志文件的丢失
+
+
+练习1：
+1.如果我想把所有应用的日志文件都写入到/etc/log/logfile文件当中的时候我们该怎么做呢？
+2.把ssh的日志指定记录到/var/log/ssh下，有哪些方法?
+
+远程日志  （日志集中化管理)  将所有服务器的日志统一发送到一台机上进行管理！
+
+把192.168.1.61上的ssh的服务日志，远程记录到192.168.1.2上/var/log/ssh里
+log server 			log clinet
+192.168.1.2			192.168.1.61
+rsyslog	  	<---	rsyslog
+
+所有机器的防火墙和selinux关闭：（现在不要问为什么要关闭防火墙和selinux后面会讲到）
+# iptables -F
+# setenforce 0
+
+第一步：在192.168.1.2上打开远程日志的接收服务端口
+
+把文件中第17和18行的注释打开（前面的“#”删掉）
+# vim /etc/rsyslog.conf 
+$ModLoad imtcp
+$InputTCPServerRun 514		
+
+# /etc/init.d/rsyslog restart		--重启日志记录服务
+
+# netstat -ntlup |grep :514		--查看日志记录服务是否有监听端口（默认端口：514）
+tcp        0      0 0.0.0.0:514                 0.0.0.0:*                   LISTEN      7295/rsyslogd       
+tcp        0      0 :::514                      :::*                        LISTEN      7295/rsyslogd  
+
+第二步：在192.168.1.61上配置ssh服务的日志远程发送给192.168.1.2
+# vim /etc/ssh/sshd_config
+SyslogFacility local5			--在文件后面加上这行内容
+
+# /etc/init.d/sshd restart		--重启sshd服务
+
+# vim /etc/rsyslog.conf
+local5.*	@@192.168.1.2:514	--这里是TCP协议的写法，UDP只有一个@
+
+# /etc/init.d/rsyslog restart		--重启日志记录服务
+
+
+第三步:回到192.168.1.2上配置传过来的日志记录到哪个文件里
+
+# vim /etc/rsyslog.conf		
+local5.*                /var/log/ssh	--在文件最后加上这行内容
+	
+# /etc/init.d/rsyslog restart		--重启日志记录服务
+
+测试：去其他机ssh连接192.168.1.61，然后在192.168.1.2上cat /var/log/ssh可以看到已经有92.168.1.61的日志了。如果有100台日志都传到此文件，怎么区分？
+可以看到日志里的有一列是不同的，就是主机名的主机头（如：qianyun.org，qianyun就是主机头），所以所有主机都要绑定不同的主机名，并且主机头要不一样就可以了
+
+TCP/UDP传输可以同时开启，不影响远程日志服务器的工作。
+
+
+2. logrotate
+日志轮转，切割，备份，归档
+
+作用：
+将之前系统产生的所有日志进行整理，方便日后查看和管理
+
+# ls /var/log/		--查看此目录下的日志文件，你可能会看到类似messages-20140724这种名字的日志文件名，这就表示此日志在7月24号轮转过
+
+logrotate是一个日志管理程序，用来把旧的日志文件删除（备份），并创建新的日志文件，这个过程称为“轮转”。我们可以根据日志的大小，或者根据其使用的天数来轮转
+logrotate 的执行由crond服务实现。在/etc/cron.daily目录中，有个文件logrotate，它实际上是个shell script，用来启动logrotate。logrotate程序每天由cron在指定的时间（/etc/crontab）启动。
+
+日志轮转服务配置文件路径：/etc/logrotate.conf
+
+配置文件详解：
+# vim /etc/logrotate.conf 
+weekly						--日志文件每周轮转一次
+
+rotate 4					--轮转后只保留四份
+
+create						--轮转后创建新的日志
+
+#compress   					--默认轮转后的日志文件是不压缩的
+
+#dateext					--轮转的日志文件加时间后缀，这里为了测试方便建议注释掉
+
+include /etc/logrotate.d
+
+/var/log/wtmp {
+	monthly					--表示此文件是每月轮转，而不会用到上面的每周轮转
+	create 0664 root utmp			--轮转的文件的权限,owner,group
+		minsize 1M			--最小1M和每月时间两条件满足其一则进行日志轮转
+	rotate 1	
+}
+
+/var/log/btmp {
+	missingok				--如果日志丢失也不报错
+	monthly
+	create 0600 root utmp
+	rotate 1
+}
+
+一下为日志轮转服务子配置文件详解：
+# vim /etc/logrotate.d/syslog			--这个子配置文件，没有指定的参数都会以默认方式进行轮转
+
+/var/log/cron
+/var/log/maillog
+/var/log/messages
+/var/log/secure
+/var/log/spooler				--这几个都是日志文件存放的路径
+{
+	sharedscripts				--表示切换时脚本只执行一次
+	postrotate				--表示rotate后执行的脚本
+		   /bin/kill -HUP `cat /var/run/syslogd.pid 2> /dev/null` 2> /dev/null || true
+	endscript				--表示脚本结束
+}
+
+
+验证日志轮转的效果请执行以下命令:
+# logrotate -f /etc/logrotate.conf	--用此命令强制轮转方便测试，注意后面一定只能接主配置文件，可以加个v参数查看过程
+# ls /var/log/
+
+
+例题：
+# vim /etc/logrotatr.conf
+/var/log/ssh {			--仅针对ssh这个应用所设置的参数
+       monthly			--每个月轮转一次
+       rotate 2			--轮转后保存2份
+       missingok		--就算日志文件有丢失也不报错
+       create 0644 root utmp	--指定新建文件的权限和所属用户和所属组
+}
+
+
+下面这段中所含脚本的详解：
+sharedscripts
+postrotate
+/bin/kill -HUP `cat /var/run/syslogd.pid 2> /dev/null` 2> /dev/null || true	--这一句话表示轮转后对rsyslog的pid进行刷新（但pid其实不变)
+endscript
+
+（看看下面这两个的不同之处）
+sharedscripts
+prerotate
+	轮转前执行脚本
+endscript
+	
+sharedscripts
+postrotate
+	轮转后执行脚本
+endscript
+
+
+为什么轮转后要做上面的kill -HUP?
+
+问题：一个服务它的日志记录到aaa.log,手动mv aaa.log aaa.log.1，然后touch aaa.log,请问新的日志信息会记录到哪个文件里?
+
+
+答案是它还会记录到aaa.log.1里，因为它还找原来的innode(同分区里mv一个文件innode不变)；所以要在做完后去kill -HUP它的pid（有些服务是kill -USR1)
+
+
+动手思考题：
+
+# logger -t "哈哈" "你好"
+
+# tail -3 /var/log/messages 	--默认这条信息在当前的messages里
+
+sharedscripts
+postrotate
+	logger -t "呵呵" "再见"
+	/bin/kill -HUP `cat /var/run/syslogd.pid 2> /dev/null` 2> /dev/null || true
+endscript
+
+请问这条信息在轮转后在哪个文件里?
+messages.1
+
+
+sharedscripts
+postrotate
+	/bin/kill -HUP `cat /var/run/syslogd.pid 2> /dev/null` 2> /dev/null || true
+	 logger -t "呵呵" "再见"
+endscript
+
+请问这条信息在轮转后在又在哪个文件里?
+messages
+
+
+3. logrotate的邮件报警功能
+
+在linux下默认能本机收发邮件，需要把postfix服务启起来
+# yum install postfix* -y			--安装邮件服务
+
+# /etc/init.d/postfix restart			--启动邮件服务
+# chkconfig postfix on				--设置邮件服务开机自启动
+
+测试邮件服务器：
+# echo "邮件内容" | mail -s "邮件主题" root	--向本机的root用户发送一封邮件
+# mail -s "邮件主题" root < /etc/fstab		--将/etc/fstab的内容以邮件发送给本机的root用户
+# cat /var/mail/root				--查看root用户的邮件
+
+如何做到在日志轮转后自动向指定的用户发送一封邮件呢？
+
+/var/log/ssh {
+	monthly
+	rotate 2
+	missingok
+	mail test	--指定邮件接收者
+	maillast	--这表示在轮转之后发一个邮件给test用户，主题会为/var/log/ssh.3，就是man logrotate里指的about-to-expire的文件
+}
+
+/var/log/ssh {
+	monthly
+	rotate 2
+	missingok
+	mail test
+	mailfirst	--这表示在轮转之后发一个邮件给test用户，主题会为/var/log/ssh.1，就是man logrotate里指的just-rotated的文件
+}
+
+
+--上面是默认的两个参数一般用的比较少，下面是用自己的方式去实现上面的功能，并且可以自定义邮件正文和主题
+/var/log/ssh {
+	monthly
+	rotate 2
+	missingok
+	sharedscripts
+	postrotate
+	echo "ssh轮转成功了.xxxxx" |mail -s "logrotated succeed" test
+	endscript
+}
+
+
+高深莫测的例题：
+
+一.如果现在针对ssh服务做日志轮转，要求每两天日志轮转一次，保留所有的日志，并且以时间来对其分类
+
+# touch /etc/sshlogrotate.conf
+# vim /etc/sshlogrotate.conf
+daily
+rotate 4
+create
+
+/var/log/ssh {
+	create 0600 root sshd
+	sharedscripts
+	prerotate
+	mkdir -p /tmp/ssh/`date +%F`
+	cp -rf /var/log/ssh.* /tmp/ssh/`date +%F`
+	endscript
+
+	sharedscripts
+	postrotate
+	/bin/kill -HUP `cat /var/run/syslogd.pid 2> /dev/null` 2> /dev/null || true
+	echo "ssh轮转成功了" | mail -s "logrotated succed" root
+	endscript
+}
+# crontab -e
+0 2 */2 * *  logrotate -f /etc/sshlogrotate.conf
+
+练习题：（尽力做，有点难，习惯了就ok了）
+
+1，配置服务器对一个服务日志（假设为/var/log/clientssh.log)配置日志轮转，
+要求：	(1.)配置到/etc/logrotate.conf文件里或者配置到/etc/logrotate.d/目录里的子配置文件
+	(2.)每天轮转一次
+	(3.)最多保留4个副本	
+2，还要要求在对/var/log/clientssh.log的日志轮转之前自动把/var/log/clientssh.log
+的最后一个副本（也就是/var/log/clientssh.log.4）文件给cp到/backup/4天前的年/4天前的月/4天前的天.clientssh.log的格式
+（比如：今天为2014-07-28,cp的文件名就是/backup/2014/7/24.clientssh.log)
+
+3，并且轮转完成后，发一封邮件通知给root用户，邮件主题和正文内容自定义
+
+
+各种不同时间显示格式命令：（还有更多，自行使用命令“# man date”查看）
+# date -d "4 days ago" +%d	--4天前
+# date -d "-4 days" +%d		--4天前
+# date -d "+4 days" +%d		--4天后
+# date -d "4 days" +%d		--4天后
+# date -d "tomorrow" +%d
+# date -d "yesterday" +%d
+# date -d "4 month" +%m
+# date -d "1 year" +%Y
+
+
+4，上网查询了解一下日志分析，日志合并的方法和概念
+
+日志分析：脚本分析，软件分析（现在对于web日志的分析比较常见，主要的开源软件有awstats,weblizer)
+还有一些服务也可以分析，比如系统自带的logwatch可以分析/var/log/下面的日志，并发邮件；或者比如oracle数据也有日志巡检工具
+	
+
+# yum install logwatch -y
+
+# rpm -qa |grep logwatch
+logwatch-7.3.6-49.el6.noarch
+# rpm -qc logwatch-7.3.6-49.el6.noarch
+/etc/logwatch/conf/ignore.conf
+/etc/logwatch/conf/logwatch.conf
+/etc/logwatch/conf/override.conf
+
+
+# vim /usr/share/logwatch/default.conf/logwatch.conf
+# cat /usr/share/logwatch/default.conf/logwatch.conf |grep -v '#'  |grep -v ^$
+
+LogDir = /var/log							--日志目录
+TmpDir = /var/cache/logwatch
+MailTo = root								--发邮件
+MailFrom = Logwatch
+Print =
+Range = yesterday							--分析日志的日期
+Detail = Low 								--详细程度
+Service = All
+mailer = "sendmail -t"
+
+
+# /etc/init.d/postfix  restart
+
+# logwatch
+
+# cat /var/mail/root
+
+日志合并：追加，排序（sort)
+
+
+# cat 1.txt 
+1
+3
+5
+7
+# cat 2.txt 
+8
+4
+9
+# cat 3.txt 
+6
+10
+2
+
+# sort -n  -o 4.txt 1.txt 2.txt 3.txt
+
+
+
+
+
+练习答案：
+一、如果我想把所有应用的日志文件都写入到/etc/log/logfile文件当中的时候我们该怎么做呢？
+# vim /etc/rsyslog.conf
+*.info	/var/log/logfile
+
+# service rsyslog restart	--重启rsyslog服务
+# ls /var/log/logfile
+-rw------- 1 root root 784 10月 26 01:20 /var/log/logfile	--系统将会自动创建该文件
+
+二、把ssh的日志指定记录到/var/log/ssh下，有哪些方法?
+第一种：拖管到xinetd下
+log_type = file /var/log/ssh
+
+第二种:拖管到xinetd下
+log_type = syslog local5 info
+然后在/etc/rsyslog.conf里加上一句
+
+local5.info     /var/log/ssh
+
+第三种：不拖管到xinetd下，用原来的sshd来做，先停掉xinetd托管的ssh服务
+# vim /etc/ssh/sshd_config
+SyslogFacility local5		将36行后面的内容修改为local5
+
+# /etc/init.d/sshd restart
+
+# vim /etc/rsyslog.conf
+local5.*                /var/log/ssh
+
+# /etc/init.d/rsyslog restart
+
+三、
+1，配置服务器对一个服务日志（假设为/var/log/clientssh.log)配置日志轮转，
+要求：	(1.)配置到/etc/logrotate.conf文件里或者配置到/etc/logrotate.d/目录里的子配置文件
+	(2.)每天轮转一次
+	(3.)最多保留4个副本	
+2，还要要求在对/var/log/clientssh.log的日志轮转之前自动把/var/log/clientssh.log
+的最后一个副本（也就是/var/log/clientssh.log.4）文件给cp到/backup/4天前的年/4天前的月/4天前的天.clientssh.log的格式
+（比如：今天为2014-07-28,cp的文件名就是/backup/2014/7/24.clientssh.log)
+
+3，并且轮转完成后，发一封邮件通知给root用户，邮件主题和正文内容自定义
+
+# vim /etc/logrotate.conf
+/var/log/clientssh.log {
+       rotate 4
+       daily
+       create 0664 root root
+   sharedscripts
+   prerotate
+     mkdir -p /backup/`date -d "-4 days" +%Y`/`date -d "-4 days" +%m`/
+     cp /var/log/clientssh.log.4 /backup/`date -d "-4 days" +%Y`/`date -d "-4 days" +%m`/`date -d "-4 days" +%d`.clientssh.log
+   endscript
+   sharedscripts
+   postrotate
+	kill -HUP `cat /var/run/sshd.pid`
+	echo "日志轮转了" |mail -s 'ssh日志轮转了' root
+   endscript
+}
+
+
+
+
+
+
+
+

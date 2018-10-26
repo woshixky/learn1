@@ -1,0 +1,919 @@
+http（超文本传输协议）：
+
+web服务器：
+简单点说就是我们如果要浏览一个网页的话，基本上所有的网站都使用的是http协议来进行数据传输的！至于怎么样传输，我们做为运维来说就没有必要去深究了，那是做html前端开发人员要去考虑的事情！
+
+survey.netcraft.net 这个是统计全球web服务器使用率的一个网站！
+
+根据排行结果显示，目前最主流的web服务器为：
+Apache
+Microsoft
+Sun
+nginx	等等
+
+我们这里主要讲的是Apache：www.apache.org 这个是apache的官方网址。
+
+# curl -I www.apache.org
+HTTP/1.1 200 OK
+Date: Tue, 01 Nov 2016 13:02:28 GMT
+Server: Apache/2.4.7 (Ubuntu)				这里可以看到该网站使用的是什么web服务器
+Last-Modified: Tue, 01 Nov 2016 12:10:17 GMT
+ETag: "d21e-5403c352b2012"
+Accept-Ranges: bytes
+Content-Length: 53790
+Vary: Accept-Encoding
+Cache-Control: max-age=3600
+Expires: Tue, 01 Nov 2016 14:02:28 GMT
+Content-Type: text/html
+
+# curl -I www.taobao.com
+HTTP/1.1 302 Found
+Server: Tengine						这个是阿里公司自己开发的web服务器
+Date: Tue, 01 Nov 2016 13:01:54 GMT
+Content-Type: text/html
+Content-Length: 258
+Connection: keep-alive
+Location: https://www.taobao.com/
+Set-Cookie: thw=cn; Path=/; Domain=.taobao.com; Expires=Wed, 01-Nov-17 13:01:54 GMT;
+Strict-Transport-Security: max-age=31536000
+
+GWS(谷哥)  BWS(百度)  SWS(搜狐）  Tegine（阿里)  (都是在apache或nginx的基础上二次开发的）
+
+如果我们的web服务器想要有各式各样的画面以及动画那么还需要用到一个叫做中间件的东西才能支持这些特效。
+中间件：
+websphere  tomcat  jboos  weblogic
+
+网站分为两类：
+1.静态网站
+2.动态网站
+
+(关于静态网站和动态网站的解析：
+程序是否在服务器端运行，这个是判断网页属不属于动态网页的重要标志。
+在服务器端运行的程序、网页、组件，属于动态网页，它们会随不同客户、不同时间，返回不同的网页，例如ASP、PHP、JSP、ASP.net、CGI等。
+运行于客户端的程序、网页、插件、组件，属于静态网页，例如html页、Flash、JavaScript、VBScript等等，它们是永远不变的。
+在网站设计中，纯粹HTML格式的网页通常被称为“静态网页”，早期的网站一般都是由静态网页制作的。静态网页的网址形式通常为：www.example.com/eg/eg.htm，也就是以.htm、.html等为后后缀的。在HTML格式的网页上，也可以出现各种动态的效果，如.GIF格式的动画、FLASH、滚动字母等，这些“动态效果”只是视觉上的，与我说常说的动态网页是不同的概念。静态网页是实实在在保存在服务器上的文件，每个网页都是一个独立的文件等。 
+动态网页，与网页上的各种动画、滚动字幕等视觉上的“动态效果”没有直接关系，动态网页也可以是纯文字内容的，也可以是包含各种动画的内容，这些只是网页具体内容的表现形式，无论网页是否具有动态效果，采用动态网站技术生成的网页都称为动态网页 
+动态的是需要服务器解释的。
+静态的放到什么地方都能运行的。
+你静态的拷贝的别的地方 也能看到。
+动态的就不行。)
+
+今天只讨论纯静态的基础apache使用！
+
+安装httpd服务：
+# yum install httpd* -y
+检查是否安装好：
+# rpm -qa |grep httpd
+httpd-2.2.15-47.el6.centos.4.x86_64
+httpd-devel-2.2.15-47.el6.centos.4.x86_64
+httpd-manual-2.2.15-47.el6.centos.4.noarch
+httpd-tools-2.2.15-47.el6.centos.4.x86_64
+
+启动httpd服务：
+# service httpd restart 
+设置开机自启动：
+# chkconfig httpd on
+
+httpd服务各配置文件解析：
+# vim /etc/httpd/conf/httpd.conf			该文件内容解析！
+http://10.0.0.61/manual/				--本地manual手册
+http://apache.chinahtml.com/				--apache中文手册
+# /var/www/manual					--帮助手册在系统中的位置
+http://10.0.0.61					--test页面
+
+# ls /etc/httpd/conf.d/welcome.conf			--test页面的配置文件
+
+# vim /etc/httpd/conf/httpd.conf			--主配置文件
+主配置文件分成三个部分：
+	Section 1: Global Environment			--全局环境
+	Section 2: 'Main' server configuration		--主配置
+	Section 3: Virtual Hosts			--虚拟主机
+
+ServerTokens OS				--向客户端提供一些服务器和信息，这个没有必要去修改，如果感兴趣可以测试一下在这行下面添加下面的内容
+
+ServerTokens Prod[uctOnly]：服务器会发送（比如）：Apache
+ServerTokens Major：服务器会发送（比如）：Apache/2
+ServerTokens Minor：服务器会发送（比如）：Apache/2.2 
+ServerTokens Min[imal]：服务器会发送（比如）：Apache/2.2.11
+ServerTokens OS：服务器会发送（比如）：Apache/2.2.11（Unix）
+ServerTokens Full：服务器会发送（比如）：Apache/2.2.11（Unix）PHP/5.2.8
+
+添加完成后重启httpd服务后使用下面的命令查看效果：
+# curl -I http://10.0.0.2
+
+
+
+serverRoot "/etc/httpd"		--存放配置文件一主目录
+
+PidFile run/httpd.pid		--pid文件
+
+Timeout 60			--连接超时时间
+
+KeepAlive Off	--一般是短时间下载文件比较多的网站  在ON的时候 一次连接多次请求(连接这里指的是TCP/ip的连接，请求指的是http协议的请求
+
+MaxKeepAliveRequests 100
+
+KeepAliveTimeout 15
+
+------------------------------
+
+keepalive参数修改小测试
+
+off 的情况， 别人刷新你的一个页面，可以看到一个IP有多次连接
+可以使用下面的命令进行查看：
+# netstat -nt |grep :80    
+或者使用命令来查看
+# netstat -nt  |grep :80 |awk -F: '{print $8}' |sort |uniq -c
+
+on的情况，  别人刷新页面
+# netstat -nt |grep :80    可以看到一个IP只有一次连接（15秒后再刷新会产生新连接) 
+
+两分钟左右不刷新，TIME_WAIT连接会自动断开
+
+-------------------------------------
+
+<IfModule prefork.c>	--预派生模式 ，lamp一般用这种
+StartServers       8	--启动时产生的进程数
+MinSpareServers    5	--最小的启动子进程数
+MaxSpareServers   20	--最大的启动子进程数
+ServerLimit      256	--最大进程总数
+MaxClients       256	--最大并发数
+MaxRequestsPerChild  4000  --每个子进程处理的最多请求数
+</IfModule>
+
+
+# httpd -l
+Compiled in modules:
+  core.c
+  prefork.c		--可以看到rhel5里带的rpm版apache运行在prefork模式
+  http_core.c
+  mod_so.c
+
+-----------------------
+rpm里prefork模式和worker模式都在配置文件里，为什么只使用prefork？
+
+# cd /usr/sbin/
+# mv httpd httpd.prefork
+# mv httpd.worker httpd
+# /etc/init.d/httpd restart
+
+# httpd -l
+Compiled in modules:
+  core.c
+  worker.c		--现在换成worker模式了
+  http_core.c
+  mod_so.c
+
+
+--在源码编译版的apache里，使用哪一种模式就留着他的配置段，把别的模式注释掉就可以了
+
+
+总的来说，prefork方式速度要稍高于worker，然而它需要的cpu和memory资源也稍多于woker。
+
+
+-----------------------------------------------------
+
+Listen 80			--监听端口
+Listen 8000			--监听端口可以同时绑定多个
+Listen 8080
+
+地址+端口：
+Listen 192.168.1.70:80	--只有192.168.1.70网段能访问apache
+Listen 1.1.1.1:80
+Listen 2.2.2.1:80
+Listen 3.3.3.1:80
+
+Listen 1.1.1.1:80
+Listen 2.2.2.1:8080
+
+
+
+下面的都属于叫DSO    dynamic  shared object	动态共享模块
+LoadModule auth_basic_module modules/mod_auth_basic.so
+LoadModule auth_digest_module modules/mod_auth_digest.so
+LoadModule authn_file_module modules/mod_authn_file.so
+LoadModule authn_alias_module modules/mod_authn_alias.so
+LoadModule authn_anon_module modules/mod_authn_anon.so
+LoadModule authn_dbm_module modules/mod_authn_dbm.so
+LoadModule authn_default_module modules/mod_authn_default.so
+LoadModule authz_host_module modules/mod_authz_host.so
+LoadModule authz_user_module modules/mod_authz_user.so
+LoadModule authz_owner_module modules/mod_authz_owner.so
+LoadModule authz_groupfile_module modules/mod_authz_groupfile.so
+LoadModule authz_dbm_module modules/mod_authz_dbm.so
+LoadModule authz_default_module modules/mod_authz_default.so
+	..................................
+
+一个DSO就是一个小功能，这些模块都是可插拔的
+
+
+
+Include conf.d/*.conf				--表示conf.d/下的*.conf配置文件生效
+
+User apache
+Group apache					--以什么身份运行 
+
+ServerAdmin root@localhost			--管理邮箱
+
+DocumentRoot "/var/www/html"			--网站家目录
+
+DirectoryIndex index.html index.html.var	--定义主页文件支持的格式
+
+AccessFileName .htaccess			--网页加密
+
+ErrorLog logs/error_log				--错误日志
+
+LogLevel warn					--日志等级
+
+
+--下面为日志的格式
+LogFormat "%h %l %u %t \"%r\" %>s %b \"%{Referer}i\" \"%{User-Agent}i\"" combined
+LogFormat "%h %l %u %t \"%r\" %>s %b" common
+LogFormat "%{Referer}i -> %U" referer
+LogFormat "%{User-agent}i" agent
+
+
+
+
+# firefox file:///var/www/manual/index.html	--文档路径
+
+
+/etc/init.d/httpd start  
+
+使用浏览器：输入自己的IP，或者127.0.0.1回环地址会看到一个红帽的欢迎页面
+
+=====================================================
+
+
+注意：进行下面的操作前，请先将iptables（防火墙）规则清空，并把selinux关闭后重启系统！
+
+
+好了，上面呢已经把整个配置文件都走了一遍，记不住没关系，后期用到的时候再去慢慢研究，很多东西都是看工作环境来进行搭配的！下面开始进入正题：
+
+实践例题：
+建立一个主页文件：
+首先使用最简单的方式建立一个简单的欢迎页面！
+
+# echo 'main page' > /var/www/html/index.html
+完成上面的命令后，打开浏览器输入http://127.0.0.1/就可以看到 main page的信息了，这个就说明，你已经成功做出了一个超级简单的网站主页了！
+
+主页文件默认是没有的 需要我们手动建立才会有，支持的主页文件名称有：index.php index.html index.html.var 必须严格遵守，否则无效
+
+/etc/httpd/conf.d/welcome.conf		这个是默认的测试主页
+# rm -rf /etc/httpd/conf.d/welcome.conf		将这个文件删除后在去试试看
+
+现在换个高大上一点的试试：
+把主页文件写成html标签的格式如下：
+# vim /var/www/html/index.html
+<html>
+<head>
+<title>笔记站点</title>
+</head>
+<body>
+<center><h1>欢迎来我的网站!@_@</h1></center>
+</body>
+</html>
+
+写完后保存退出，再去浏览器试试看！如果能够显示出定义的内容，说明你成功了！！
+
+例二：修改网站根目录
+# vim /etc/httpd/conf/httpd.conf
+292：	 DocumentRoot "/www"		--修改网站根目录为/www
+		
+317：	<Directory "/www">		--把这个也对应的修改为/www
+
+修改完成后重新装载httpd服务，相当于刷新不是重启
+# /etc/init.d/httpd reload		
+# mkdir /www  		建立httpd服务的根目录
+# echo 'new main page' > /www/index.html	网站根目录改变后我们新建的网站主页文件就要写到新指定的网站根目录中了
+
+上面都修改完成后请到浏览器进行测试！
+
+再次提醒：注意！一定不要开启selinux，否则换新的家目录的话，会造成报目录不存在的错误
+
+
+例三：修改主页类型或者主页名
+
+DirectoryIndex index.html index.html.var	--定义主页文件支持的格式
+在配置文件中的这句话就是定义限制了我们httpd服务的主页文件的支持！
+那么我们对其进行一点小修改！
+# vim /etc/httpd/conf/httpd.conf
+DirectoryIndex index.php index.html.var	
+
+修改后保存退出，在使用浏览器去测试，发现没有返回主页信息，因为上面的意思为:先找网站家目录下的index.php，不存在话，再找index.html.var，都不存在，就表示找不到主页
+
+# echo 'php main page' > /www/index.php
+
+在测试，发现又能找到了！
+
+# elinks 10.1.1.45	--elinks是一个文本模式的web浏览器，如果报命令找不到请使用下面的命令将其安装上：
+
+# yum install -y elinks*
+
+
+例四：修改语言集和字符集
+# vim /etc/httpd/conf/httpd.conf
+685 DefaultLanguage zh-CN	--默认语言集打开注释，并改为简体中文zh-CN
+
+743 LanguagePriority zh-CN en ca cs da de el eo es et fr he hr it ja ko ltz nl nn no pl pt pt-BR ru sv  zh-TW  --语言优先级，把zh-CN写到最前
+
+759:  AddDefaultCharset UTF-8	--字符编码，如果中文的话，有可能需要改为gb2312或者gbk,因你的网站文件的默认编码而异
+
+常见的可以显示中文的字符集有:gbk,gb2312,gb18030,utf-8
+
+--扩展：
+windows默认的字符集是gb2312
+linux默认的字符集是utf-8
+
+----------------------------------
+
+
+
+关于apache的标签，容器（访问控制）
+
+directory （目录)    files(文件）  location （位置，url统一资源定位）
+
+
+<Directory "/www">			--对/www目录进行的控制
+Options Indexes FollowSymLinks  	--允许列表，符号链接 
+AllowOverride None			--不使用.htaccess控制
+Order allow,deny			--指定的是先允许，后拒绝
+Allow from all				--针对/www目录的访问权限的控制，这两句代表允许所有访问
+</Directory>				--容器结束
+	
+容器内控制选项详解：
+indexes   		--指当找不到默认的主页文件时，就把此目录下的文件或者目录以列表形式显示出来
+FollowSymlinks  	--允许符号链接，扩展了网站根目录，允许链接到网站根目录以外
+allowoverride none 	--可以把none改为all来允许.htaccess控制
+order allow,deny   	--指定的是先允许，后拒绝
+allow  from all    	--指定允许所有
+
+
+例五：把网站的文件修改成目录列表的形式
+	
+条件1.Options Indexes FollowSymLinks		--相应目录要有indexes参数（将一个目录指定为httpd服务的家目录）
+条件2.没有主页文件
+条件3.符合上面两个条件，就会访问到redhat的欢迎页面
+# vim /etc/httpd/conf.d/welcome.conf  		--注释掉这个欢迎页面，或者是删除它
+
+# /etc/init.d/httpd reload			--重新装载httpd服务
+
+# elinks  127.0.0.1  				--可以看到是以列表形式显示了
+
+例六：访问权限控制	--注意这些访问权限控制是针对容器的
+
+  Order allow,deny
+    Allow from all	--允许所有
+
+  Order allow,deny
+    deny from all	--拒绝所有
+
+    Order allow,deny
+    allow from all
+    deny from 10.0.0.2	--允许所有，但拒绝此IP
+
+    Order deny,allow
+    deny from all
+    allow from 10.0.0.2  --拒绝所有，但允许此IP	
+
+    Order allow,deny
+    allow from all
+    deny from all	 --拒绝所有
+
+    Order allow,deny
+    deny from all
+    allow from all	 --还是拒绝所有
+
+   Order allow,deny
+    deny from all
+    allow from 10.0.0.2   --仍然是拒绝所有
+
+
+练习：在你的家目录/www目录下新建一个bbs目录，也就是/www/bbs，再在/www/bbs里建立一个index.html测试文件，使用directory目录容器控制这个子目录允许自己的IP访问，其它都拒绝
+
+<Directory "/www/bbs">		--不能嵌套，所以这里写绝对路径
+   order deny,allow
+   deny from all
+   allow from 10.0.0.2		--可以把10.0.0.2换成.cluster.com这个表示cluster.com这个域下的所有主机名都不能访问（需要hosts文件和DNS来支持)
+</Directory>
+--加上这段话，不要嵌套在/www的目录容器里
+
+
+例七.files 容器		--针对文件的控制
+
+<Directory "/www">
+    Options Indexes FollowSymLinks
+    AllowOverride None
+    Order allow,deny
+    Allow from all
+<files "1">		--表示2这个客户端不能访问/www/1,而且如果要控制/www/bbs/1这个文件，不能在这里写成<files "bbs/1">，需要在/www/bbs这个目录的directory容器里再嵌套files标签来控制
+    order allow,deny
+    allow from all
+    deny from 10.0.0.2 
+</files>
+</Directory>
+
+
+<files "/www/1">
+    order allow,deny
+    deny from all
+</files>		--这种写法没有生效，不对，所以要files容器嵌套到目录容器内部，要上面的那种写法
+
+<files "1">
+    order allow,deny
+    deny from all	--整个文档目录都生效
+</files>
+
+
+--下面这段是apache的默认的一个files容器的配置示例
+<Files ~ "^\.ht">		--以.ht开头的文件不被客户端用户看到	～是匹配
+    Order allow,deny
+    Deny from all
+</Files>
+
+注意：Files容器对配置的目录以及子目录起作用，对上一级目录没有影响
+      Files容器不在任何一个目录，将会对整个数据目录起作用
+
+
+例八：location 容器（对URL进行控制）
+
+
+<Location "/bbs">
+        order allow,deny
+        deny from all
+</Location>
+--这是对http://IP/bbs    这种ＵＲＬ来进行权限控制
+
+
+--location容器有时候和directory有可能重合，并且配置有冲突，（如果一个是允许，一个是拒绝，无论是location拒绝，还是directory拒绝，最终结果都是拒绝的)下面这种情况，http://IP/bbs是不能访问的
+
+<Location "/bbs">
+      order allow,deny
+       deny from all
+</Location>
+
+<Directory "/www/bbs">
+   order allow,deny
+   allow from all
+</Directory>
+
+--注意：在rhel6里，有细微变化，location的优先级要高
+
+
+
+
+例九：对网站目录使用apache的基本验证（一般指使用用户名和密码来确认这个用户的身份）功能    .htaccess
+
+第一种做法：
+
+1。
+# vim /www/.htaccess	　　--对哪个目录进行限制，就在哪个目录下建立此文件
+
+
+authname "please input your username and password! @_@"
+authtype basic
+authuserfile /etc/httpd/userpasswd
+require valid-user
+
+
+2。
+# htpasswd -c /etc/httpd/userpasswd  aaa　　--创建此文件，并加入一个用户，自定义密码，注意此用户与系统普通用户无关
+New password: 
+Re-type new password: 
+Adding password for user aaa
+
+
+# htpasswd  /etc/httpd/userpasswd  bbb　　--再增加一个用户，文件已经存在，无需在创建，所以不需-c参数
+New password: 
+Re-type new password: 
+Adding password for user bbb
+
+
+# cat /etc/httpd/userpasswd 
+aaa:JscuRCtWV0Sh.
+bbb:C6wrx4pFco/lk	--密码为密文
+
+
+
+3。
+# vim /etc/httpd/conf/httpd.conf 
+
+<Directory "/www">
+    Options Indexes FollowSymLinks
+    AllowOverride all	--改成all，支持.htaccess加密
+    Order allow,deny
+    Allow from all
+</Directory>
+
+
+4。
+# /etc/init.d/httpd restart
+
+
+http://IP 访问时，需要验证
+
+再次访问需要清空浏览器缓存才需要验证
+
+
+
+
+第二种做法：
+
+# vim /etc/httpd/conf/httpd.conf
+
+<Directory "/www">	
+Options Indexes FollowSymLinks  
+AllowOverride None		--none不用改成all
+Order allow,deny	
+Allow from all	
+
+authname "please input your username and password! @_@"
+authtype basic
+authuserfile /etc/httpd/userpasswd
+require valid-user	--把这四句直接加到这个目录标签里
+
+</Directory>		
+
+
+2，
+# htpasswd -c /etc/httpd/userpasswd  aaa
+
+3，
+# /etc/init.d/httpd restart	--重启后，验证，也可以
+
+
+例十:
+apache的alias跳转（可以将不是网站家目录的目录加入进来）
+
+# vim /etc/httpd/conf/httpd.conf
+Alias /test      "/test"			
+
+<Directory "/www">				
+    Options Indexes MultiViews FollowSymLinks
+    AllowOverride None
+    Order allow,deny
+    Allow from all
+</Directory>
+
+可以做Alias跳转，也可以做软链接
+
+
+
+
+例十一：
+错误页面
+
+ls /var/www/error/404.jpg		--准备一个图片放到这个位置
+ 
+# vim /etc/httpd/conf/httpd.conf	--修改主配置文件，指向你的这个图片路径
+ErrorDocument 404 /error/404.jpg
+
+# /etc/init.d/httpd restart
+
+＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝
+
+Starting httpd: httpd: Could not reliably determine the server's fully qualified domain name, using localhost.localdomain for ServerName
+                                                           [  OK  ]
+出现以上情况，就是没绑定主机名
+# hostname www.cluster.com
+# vim /etc/sysconfig/network
+HOSTNAME=www.cluster.com
+
+# vim /etc/hosts
+10.0.0.61	www.cluster.com
+
+启动apache遇到错误：httpd: Could not reliably determine the server's fully qualified domain name
+
+编辑httpd.conf文件，搜索"#ServerName"（大概在276行）
+# vim /etc/httpd/conf/httpd.conf
+ServerName www.example.com:80			--将这行的注释打开就好了
+ServerName localhost:80
+再重新启动apache 即可。
+# service httpd restart 
+
+＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝
+
+	虚拟主机	--用apache或nginx就可以做
+
+	一台服务器跑多台web服务
+
+
+
+VPS   virtual  private  server   虚拟专用服务器	--使用虚拟化技术来做
+
+云服务器
+
+
+虚拟主机(用web服务器来做)－－》 VPS (虚拟化) －－》 云服务器 (云计算)
+
+
+使用虚拟化技术（vitural sever 或者  vmware   EXS server  )把一台服务器分隔成几个服务器，每个都拥有独立的CPU资源，内存资源，磁盘资源，独立IP等
+
+
+
+mkdir -p /www/aaa
+mkdir -p /www/bbb
+
+echo "aaa main page" > /www/aaa/index.html
+echo "bbb main page" > /www/bbb/index.html
+
+
+
+例十二：基于ＩＰ的虚拟主机
+
+NameVirtualHost *:80
+
+<VirtualHost *:80>
+    DocumentRoot /www/aaa
+    ServerName 10.0.0.2
+    ErrorLog logs/1-error_log
+   CustomLog logs/1-access_log common
+</VirtualHost>
+
+<VirtualHost *:80>
+    DocumentRoot /www/bbb
+    ServerName 10.0.0.3
+    ErrorLog logs/2-error_log
+   CustomLog logs/2-access_log common
+</VirtualHost>
+
+
+# ifconfig eth0:0 10.0.0.3 netmask 255.255.255.0		将上面虚拟主机中使用的ip都虚拟出来
+
+
+# /etc/init.d/httpd restart
+
+验证：
+http://10.0.0.2/
+http://10.0.0.3/	--实际情况每个IP使用DNS对应自己的域名
+
+
+
+例十三：基于端口的虚拟主机
+
+Listen 80		--这一句默认就有，不用再加
+Listen 8000
+
+
+<VirtualHost *:80>
+    DocumentRoot /www/aaa
+    ServerName 10.0.0.2
+    ErrorLog logs/1-error_log
+   CustomLog logs/1-access_log common
+</VirtualHost>
+<VirtualHost *:8000>
+    DocumentRoot /www/bbb
+    ServerName 10.0.0.2
+    ErrorLog logs/2-error_log
+   CustomLog logs/2-access_log common
+</VirtualHost>
+
+/etc/init.d/httpd restart
+
+验证：
+http://10.0.0.2/
+http://10.0.0.2:8000/
+
+
+----------------------------------------------------------------------------------------------
+
+例十四：基于域名的虚拟主机
+
+
+--需要DNS的cname记录的支持，或者A记录（这里需要使用到DNS服务器的知识，今天就随便讲一下）
+
+aaa.cluster.com
+bbb.cluster.com
+
+
+
+--以下架构是DNS服务器和apache服务器的IP在同一台机器10.0.0.2上，也可以考虑分成两台服务器来做
+
+# yum install bind*  -y
+
+
+# vim /etc/named.conf
+
+options {
+        directory "/var/named";
+};
+
+zone "cluster.com"  IN {
+        type master;
+        file "data/master.cluster.com.zone";
+};
+  
+# vim /var/named/chroot/var/named/data/master.cluster.com.zone
+$TTL 86400
+@       IN      SOA     sdfasdfsa.   sfddsafas. (
+                        2011032601
+                        120
+                        240
+                        360
+                        86400 )
+        IN      NS      10.0.0.2.
+aaa     IN      A       10.0.0.2	--这里为apache服务器的IP
+bbb     IN      CNAME   aaa
+
+
+# /etc/init.d/named restart
+
+# vim /etc/httpd/conf/httpd.conf
+
+NameVirtualHost *:80
+<VirtualHost *:80>
+    DocumentRoot /www/aaa
+    ServerName aaa.cluster.com
+    ErrorLog logs/1-error_log
+   CustomLog logs/1-access_log common
+</VirtualHost>
+<VirtualHost *:80>
+    DocumentRoot /www/bbb
+    ServerName bbb.cluster.com
+    ErrorLog logs/2-error_log
+   CustomLog logs/2-access_log common
+</VirtualHost>
+
+
+# /etc/init.d/httpd restart
+
+
+--以下是客户端的验证
+# vim /etc/resolv.conf
+nameserver  10.0.0.2 	--DNS指向DNS服务器的IP
+
+
+http://aaa.cluster.com/
+http://bbb.cluster.com/
+
+----------------------------------------------------------------------------------------------
+
+思考：
+1。上面两个域名，那么我直接用IP是能否访问，访问的是哪一个？为什么？
+	答案：哪个虚拟主机在最前面，直接使用IP访问的就是哪一个
+
+
+2。配置了虚拟主机后，那么我原来的DocumentRoot里指的原网站家目录是否还可用?
+   如果不可用，如何解决?
+
+	答案：不能用。
+		除非再为原家目录再建立一个虚拟主机
+
+
+
+问题:上面这三种各有什么优缺点?
+基于IP:浪费IP
+基于端口:访问时需要加端口，客户不可能记端口的
+基于域名:比较适合外网直接访问
+
+
+
+			客户端
+			  ｜
+			  ｜
+			路由器
+			  ｜
+			  ｜
+			防火墙
+			  |
+			  |
+		  反向代理或缓存
+			  ｜
+			  ｜	
+		     	网站	
+
+====================================================================
+
+作业:
+下载最新版本的httpd源码版，然后编译安装
+
+===================================================================
+
+扩展部分
+
+
+使用第三方模块 mod-cband-0.9.6.1.tgz 实现apache限速
+
+# wget http://ncu.dl.sourceforge.net/project/cband/mod-cband/mod-cband-0.9.6.1/mod-cband-0.9.6.1.tgz
+
+解压并CD进去进行编译
+# tar xvf /share/soft/apache_source/mod-cband-0.9.7.2.tgz -C /usr/src/
+# cd /usr/src/mod-cband-0.9.7.2/
+
+# ./configure ;make ;make install
+
+报错说明：
+configure: error: apxs missing		说明少了个东西需要手动安装上才行
+
+# yum install httpd-devel -y
+
+
+确认/etc/httpd/conf/httpd.conf里是否自动加载了下面这句话
+LoadModule cband_module       /usr/lib/httpd/modules/mod_cband.so
+
+
+
+针对虚拟主机new.cluster.com进行限速
+
+NameVirtualHost *:80
+<VirtualHost *:80>
+    DocumentRoot /www/aaa
+    ServerName news.cluster.com
+    ErrorLog logs/aaa.com-error_log
+    CustomLog logs/aaa.com-access_log common
+
+    cbandlimit 100M		--指网站允许的总的下载流量
+    cbandperiod 1W		--清空时间
+    cbandspeed 1024 10 30 	--当前总带宽，每秒可以同时连接10个，最大的总连接数，1024在这里除以8就是kb每秒的单位
+    cbandremotespeed 10kb/s 3 3 --针对单一客户端下载速度为10kb/s，每秒可以同时3个连接,最多一个IP生成3个连接
+<location /cband-status>
+  sethandler cband-status	--使用http://IP/cband-status访问控制状态
+</location>
+<location /cband-status-me>
+  sethandler cband-status-me   ----使用http://IP/cband-status-me访问控制状态
+</location>
+</VirtualHost>
+
+/etc/init.d/httpd restart
+
+
+dd if=/dev/zero of=/www/aaa/123  bs=1M count=1000  --创建一个大点的文件，做下载测试
+
+wget http://news.cluster.com/123   --使用wget下载，发现被限速了
+
+使用下面的URL地址访问状态信息页面
+http://news.cluster.com/cband-status
+http://news.cluster.com/cband-status-me
+
+
+
+==========================================================
+
+
+
+问题：
+现在有需求要对apache做每天一次的日志轮转，你怎么实现?
+
+
+1,使用logrotate来做
+
+
+2，自己写脚本
+
+#!/bin/bash
+
+mv /var/log/httpd/access_log /var/log/httpd/access_log.`date -d "-1 days"  +%F`.log
+touch /var/log/httpd/access_log
+kill -HUP `cat /etc/httpd/run/httpd.pid`
+
+
+把上面脚本放到crontab里0点执行
+
+
+
+3.
+www.cronolog.org
+
+
+软件包：
+ls /share/soft/soft/soft/log/
+cronolog-1.6.2.tar.gz  cronolog.pdf  cronosplit.pdf
+
+解压到任意目录，我这里是/usr/src/
+# tar xvf cronolog-1.6.2.tar.gz -C /usr/src
+
+# cd /usr/src
+
+
+# cd /usr/src/cronolog-1.6.2/
+
+编译安装
+# ./configure ;make ;make install
+
+1,先注释掉虚拟主机，虚拟主机需要每个都配，为了方便，这里注释掉，使用原来的web服务器配置
+
+vim /etc/httpd/conf/httpd.conf
+
+修改：
+CustomLog logs/access_log combined
+改成：
+CustomLog "|/usr/local/sbin/cronolog /opt/%Y/%m/%d/access_log" combined
+--注意格式不要写错
+
+
+重启apache后，过几秒，或者访问一下apache
+
+就会在/opt下产生了
+
+
+
+关于日志合并
+
+	因为有些日志分析软件，它是只分析access.log；当要分析多个网站的access.log的总流量，就需要把它们的access.log合并一起，再由分析软件去分析这个合并的log文件
+
+
+# sort -m -k 4 -o  newaccess.log access_log access_log1
+
+
+
+

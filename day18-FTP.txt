@@ -1,0 +1,762 @@
+FTP文件传输协议	  成本低，跨平台,跨公网		file transfer protocol
+
+使用的端口号：
+	数据传输端口	20	--用于数据的上传和下载
+	命令传输端口	21	--用于ftp命令的传输
+
+ftp的两种模式：
+主动：默认情况下，ftp服务是开放了21端口，用来接受控制命令，服务器用20端口去发送数据（连接客户端大于1024的随机端口）
+
+被动：ftp服务也是开放21端口，用来接受命令控制，进行数据传输时，客户端会告知服务端打开一个大于1024的端口，然后客户端去主动连接服务
+
+主动好还是被动好?
+
+先假设一种场景：客户端用户安装个人防火墙，但又不懂防火墙的配置，所以防火墙默认配置。
+个人防火墙的默认一般只会拒绝进来的包，而不会拒绝你出去的包和你出去再回来的包。
+所以上面的主动模式是有可能被拒绝掉的
+
+主动ftp对ftp服务器的管理有利，但对客户端的管理不利。因为是服务端主动与客户端去建立连接，可能会被客户端的防火墙把源来自服务器的包给阻塞掉
+
+被动ftp对ftp客户端的管理有利，但对服务端的管理不利。因为客户端主动与服务端去连，可能会被服务端的防火墙给阻塞掉
+
+折衷的方法就是使用被动模式，并指定一个连接过来的端口范围，可以针对这个范围的端口进行一个防火墙的设置。 --（到iptables课程会介绍）
+
+安装服务：
+# yum install vsftpd  -y			--服务端
+# yum install ftp lftp -y			--客户端
+
+# /etc/init.d/vsftpd start
+# chkconfig vsftpd on
+
+# netstat -ntl |grep ：21			--现在是只能看到监听21端口
+tcp        0      0 0.0.0.0:21                  0.0.0.0:*                   LISTEN  	
+
+# lsof -i:21
+COMMAND  PID USER   FD   TYPE DEVICE SIZE/OFF NODE NAME
+vsftpd  3321 root    3u  IPv4  21400      0t0  TCP *:ftp (LISTEN)
+
+ftp的匿名用户
+ftp						--系统用户，/etc/passwd里有此用户，默认进入ftp用户的家目录
+anonymous					--系统中无此用户(匿名)，默认进入/var/ftp
+
+ftp的工作模式解析：
+vsftpd默认的工作模式是被动模式
+
+验证主动模式：
+
+# ftp 10.0.0.61					--自己做客户端,连接自己的服务端
+Connected to 10.0.0.61.
+220 (vsFTPd 2.0.5)
+530 Please login with USER and PASS.
+530 Please login with USER and PASS.
+KERBEROS_V4 rejected as an authentication type
+Name (10.0.0.61:root): ftp			--输入匿名用户ftp
+331 Please specify the password.
+Password:					--它的密码任意或者为空
+230 Login successful.
+ftp> ?						--使用?号可以查看能使用哪些命令
+ftp> help passive				--help+命令可以查看命令的帮助
+passive         toggle passive transfer mode
+ftp> passive 					--使用passive命令关闭被动模式
+Passive mode off.
+ftp> ls						--建立数据链路（列出当前ftp家目录中的内容）
+200 PORT command successful. Consider using PASV.
+150 Here comes the directory listing.
+drwxr-xr-x    2 0        0            4096 May 13  2009 pub
+226 Directory send OK.
+
+ftp> get					--下载文件
+
+ftp> put					--上传文件
+
+
+
+
+在服务器打开第二个终端验证
+# netstat -nt |grep TIME_			--可以看到是服务端的20端口去连客户端的大于1024的随机端口
+tcp        0      0 10.0.0.61:20                10.0.0.61:56227             TIME_WAIT   
+# netstat -nt |grep TIME_
+tcp        0      0 10.0.0.61:20959            10.0.0.20:36261             TIME_WAIT   
+tcp        0      0 10.0.0.61:10084            10.0.0.20:52731             TIME_WAIT   
+tcp        0      0 10.0.0.61:11956            10.0.0.61:48358             TIME_WAIT
+
+===============================================================
+
+配置文件参数说明：
+# cat  /etc/vsftpd/vsftpd.conf  |grep -v ^# |grep -v ^$		-- ^#代表以#开头的行，也就是注释；  ^$代表空行
+anonymous_enable=YES			--是否允许匿名用户登录
+local_enable=YES			--是否允许本地用户登录
+write_enable=YES			--是否允许本地用户登录后可写
+local_umask=022				--建立文件或者目录的权限掩码
+dirmessage_enable=YES			--是否启用目录的说明或者欢迎信息
+xferlog_enable=YES			--是否打开日志功能 （只记录文件的上传和下载信息）
+connect_from_port_20=YES  		--默认支持主动模式（两个模式都是开启的，直接使用的话是使用的被动模式）	
+xferlog_std_format=YES			--日志使用xferlog而不是vsftpd.log，改为NO的话，则相反
+listen=YES				--默认运行在stand alone下
+pam_service_name=vsftpd			--支持pam（可植入模块）
+userlist_enable=YES			--打开用户列表的功能
+tcp_wrappers=YES			--支持tcp_wrappers
+
+==================================================================
+
+
+
+配置实例：
+
+例一：不允许匿名用户登录
+# vim /etc/vsftpd/vsftpd.conf
+anonymous_enable=NO			--改为no
+
+匿名用户有两个：ftp   		 密码为任意值或空
+		anonymous  	 密码为任意值或空
+
+# /etc/init.d/vsftpd   reload
+
+使用匿名用户登录测试，发现登录不了
+
+
+例二:匿名用户的下载
+
+# vim /etc/vsftpd/vsftpd.conf
+anonymous_enable=YES	--改回yes
+					
+
+默认使用匿名用户登录的服务端的/var/ftp目录下，因为/etc/passwd里的ftp用户的家目录就是/var/ftp，所以其实就是登录到它的家目录
+
+匿名用户默认是可以登录，也可以下载，因为/var/ftp是755权限
+ftp > get 123.txt
+
+能读表示能下载，能写表示能上传
+
+# chmod 750  /var/ftp后使用匿名用户登录,ls都看不到文件列表，也下载不了
+
+# chmod 754  /var/ftp后使用匿名用户登录,ls都看不到文件列表，也下载不了,因为不能cd到/var/ftp
+
+# chmod 751  /var/ftp后使用匿名用户登录,ls都看不到文件列表，但是可以下载；因为它能cd到/var/ftp，ls虽然看不到，但get 文件名，是可以下载下来的
+
+还要注意文件的权限对其是否能被下载也有关系，要登录用户对其有r权限，才可以下载
+
+--任何服务的权限控制是要经过两道门的，一个是服务本身的权限控制，一个是操作系统的权限控制，也就是说两个都允许，才有权限；如果有防火墙的话，则还要考虑防火墙的控制 
+
+--总结：匿名用户对登录的目录有rx权限，对目录里的文件有r权限就可以下载
+
+
+例三：匿名用户的上传
+
+默认是不允许匿名用户上传的
+ftp> put 1
+local: 1 remote: 1
+227 Entering Passive Mode (10,1,1,45,135,67)
+550 Permission denied.	--权限拒绝，因为/var/ftp不允许ftp用户写
+
+
+	chmod 777 /var/ftp
+
+Name (10.0.0.45:root): ftp
+331 Please specify the password.
+Password:
+500 OOPS: vsftpd: refusing to run with writable anonymous root
+Login failed.   --/var/ftp被改为777后，发现登录不了，所以还得改回去755
+
+--因为ftp服务本身不允许系统权限给匿名写，所以解决方法是在登录目录，再去创建一个用于上传的目录，给一个写权限
+
+# chmod 755 /var/ftp
+# chmod 777 /var/ftp/pub   --把pub改为可写，用于上传
+
+ftp> cd pub
+250 Directory successfully changed.
+ftp> put 1
+local: 1 remote: 1
+227 Entering Passive Mode (10,1,1,45,232,229)
+550 Permission denied.	--但还是权限拒绝
+
+--因为系统权限允许了，但是服务本身的权限还是不允许，所以要去改服务的配置参数	
+anonymous_enable=YES
+anon_upload_enable=YES		--允许匿名用户上传文件
+anon_mkdir_write_enable=YES	--允许匿名用户创建目录
+
+
+
+--总结：匿名用户只能对登录目录内的子目录里面进行上传，并且对这个子目录要有w权限，
+--还要有anon_upload_enable=YES和anon_mkdir_write_enable=YES的支持就可以上传了
+
+练习： 使客户端匿名用户登录后可以删除文件和重命名文件，并且可以上传一个同名文件把以前的覆盖（相当是修改)	(man vsftpd.conf)
+
+# vim /etc/vsftpd/vsftpd.conf
+anon_other_write_enable=yes	--加上此参数，再重启服务；
+
+
+ftp > delete xxx
+ftp > rename mbr.bak mbr
+ftp > mkdir aaa
+
+在rhel6下测试的，加上这个参数后，家目录里的文件不能删，但子目录里的可以
+
+实际环境中不建议使用此参数，太不安全了,包括上面允许匿名写也是不安全的
+
+
+
+例四：	允许匿名下载刚上传的文件
+
+为什么默认不允许下载自己上传的文件？
+文件上传之后权限自动改为600,
+而默认情况下anon_world_readable_only=YES，规定了匿名用户只能下载world readable的文件（也就是others里有r位的)
+对于600权限文件是没有权限下载
+
+-rw-------    1 14       50            845 Jul 19 06:12 fstab   不可以
+-rw-r--r--    1 0        0            1666 Jul 19 06:13 inittab 可以
+
+
+方法一：让匿名帐号上传的文件权限自动更改为644的权限
+man vsftpd.conf 
+# vim /etc/vsftpd/vsftpd.conf
+anon_umask=022
+如果要文件上传后的权限是444 ,umask怎么设定?
+anon_umask=0222
+
+方法二：允许匿名帐号下载不是所有人都可以读的文件
+# vim /etc/vsftpd/vsftpd.conf
+anon_world_readable_only=NO  <---默认是yes，只允许下载所有人都可以读的文件
+
+
+
+例五：关于普通用户（系统的普通用户)的登录
+
+普通用户默认是允许登录ftp的，并且是登录到自己的家目录，登录密码也就是普通用户登录系统的密码
+
+禁止普通用户登录
+
+方法一：
+# vim /etc/vsftpd/vsftpd.conf
+local_enable=NO		--建议使用服务的参数去禁止，但是这里会把所有的普通用户给禁止掉，要实现特定的用户的控制
+
+方法二：/etc/passwd 里把普通用户最后一列，改为/bin/false
+
+/bin/bash    	--可以登录系统，也可以登录ftp，也可以收邮件
+/sbin/nologin 	--不可以登录系统，但可以登录ftp,也可以收邮件
+/bin/false    	--又不可以登录系统，又不可以登录ftp，可以收邮件
+
+
+
+例六：使用用户列表来控制  --建议使用这种方式
+# vim /etc/vsftpd/vsftpd.conf
+	userlist_enable=yes	--打开用户列表功能，默认就是打开的
+
+	userlist_deny=YES   	--加上这句，启用黑名单
+
+# vim /etc/vsftpd/user_list 	--加上要禁止的用户，一个用户写一行
+
+黑名单 
+
+--------------
+
+	userlist_enable=yes
+	
+	userlist_deny=no
+
+	vim /etc/vsftpd/user_list  --加上允许的用户，一个用户写一行
+
+白名单
+
+--上面的主要要注意的是：
+		userlist_enable  指定的是用户列表功能是否有效
+		userlit_deny 指定的是用户列表是允许还是拒绝
+
+
+--pam默认也把root和一些系统用户（uid小于500的）给禁用了。
+# vim /etc/vsftpd/ftpusers
+
+--如果把/etc/pam.d/vsftpd文件中第二行的sense=deny改为allow，则表示/etc/vsftpd/ftpusers文件里的用户pam是允许登录的
+
+
+--如果允许root用户登录ftp，则要/etc/vsftpd/user_list和/etc/vsftpd/ftpusers都不要禁用root登录ftp就可以了。但为了安全，不会这样去开放root用户的
+
+
+
+例七：关于普通用户的下载和上传
+
+	默认是允许下载和上传的
+
+	允许上传除了系统目录有写权限外，还有与服务的参数write_enable=YES有关
+
+
+
+--有没有可以userlist这样的控制部分用户可以上传，另外的用户不能下载的参数呢?
+一般来说，ftp不适合做多个用户都登录到同一个目录里，然后对不同的用户做权限控制
+
+而samba这种文件服务器就适合做
+
+
+
+练习：所有的本地用户（非匿名用户）登录后，都统一登录到/ftpdata/目录下
+
+--一种：把所有的用户家目录改成/ftpdata/。但这样做会影响到系统用户登录到自己的家目录
+
+--二种：使用下面的参数，它不影响你系统用户登录到自己的家目录
+# vim /etc/vsftpd/vsftpd.conf
+local_root=/ftpdata
+
+
+
+例八：关于chroot（cage笼环境,jail监牢）	--为了增强安全性，把用户活动范围锁定到登录的目录里
+
+
+chroot是一个安全机制，同时它也是有一个命令叫chroot
+
+# chroot /mnt/
+chroot: failed to run command `/bin/bash': No such file or directory
+
+
+--这样直接chroot一个目录是不行的，只能去chroot一个有bash环境的目录（比如说双系统环境里另一个系统的根，或者是排错时错误系统的根）
+
+
+默认情况下，普通用户（匿名用户除外）可以登录ftp后，cd切换到/下的任何地方，只要有r权限，就可以get文件，那么显然是不安全的
+例八：关于chroot（cage笼环境,jail监牢）	--为了增强安全性，把用户活动范围锁定到登录的目录里
+
+
+chroot是一个安全机制，同时它也是有一个命令叫chroot
+
+# chroot /mnt/
+chroot: failed to run command `/bin/bash': No such file or directory
+
+
+--这样直接chroot一个目录是不行的，只能去chroot一个有bash环境的目录（比如说双系统环境里另一个系统的根，或者是排错时错误系统的根）
+
+
+
+
+默认情况下，普通用户（匿名用户除外）可以登录ftp后，cd切换到/下的任何地方，只要有r权限，就可以get文件，那么显示是不安全的
+# vim /etc/vsftpd/vsftpd.conf
+chroot_list_enable=YES
+chroot_list_file=/etc/vsftpd/chroot_list
+
+
+# vim /etc/vsftpd/chroot_list  --手动创建这个文件，默认不存在，并写上要加入笼环境的用户名，一行写一个
+
+
+# /etc/init.d/vsftpd reload
+
+测试发现,有笼环境的用户ftp登录后，cd .. 还是在它的登录目录，出不去了
+
+
+
+练习：如何把所有的普通用户（匿名用户默认就是笼环境)加入到jail环境
+
+chroot_local_user=YES
+
+chroot_list_file=/etc/vsftpd/chroot_list
+
+
+# vim /etc/vsftpd/chroot_list  --手动创建这个文件，默认不存在，并写上要加入笼环境的用户名，一行写一个
+
+
+	/etc/init.d/vsftpd reload
+
+测试发现,有笼环境的用户ftp登录后，cd .. 还是在它的登录目录，出不去了
+
+
+
+练习：如何把所有的普通用户（匿名用户默认就是笼环境)加入到jail环境
+# vim /etc/vsftpd/vsftpd.conf
+chroot_local_user=YES
+
+
+
+例九：登录时显示目录信息
+	
+1，针对各个目录的消息显示：
+# vim /etc/vsftpd/vsftpd.conf
+dirmessage_enable=YES
+
+# vim /home/a/.message	--写上关于登录此目录，或者CD到此目录的说明信息或者欢迎信息
+
+不管什么用户，只要是能够登录或者cd到这个目录，就会显示消息
+
+
+
+2，针对全局的消息显示
+
+方法一：
+ftpd_banner=Welcome to my ftp server !!
+
+# ftp 10.0.0.45
+Connected to 10.0.0.45.
+220 Welcome to my ftp server ,this is for students 	--在这里就会显示信息
+530 Please login with USER and PASS.
+530 Please login with USER and PASS.
+KERBEROS_V4 rejected as an authentication type
+Name (10.0.0.45:root): 
+
+方法二：
+把消息直接写到一个文件里
+
+banner_file=/etc/vsftpd/banner   --手动写一个文件，并写上消息 
+
+# ftp 10.0.0.45
+Connected to 10.0.0.45.
+220-@@@@@@@@@@@@@@@@@@
+220-@           @
+220-@   @_@     @
+220-@           @
+220-@@@@@@@@@@@@@@@@@
+220 
+530 Please login with USER and PASS.
+530 Please login with USER and PASS.
+KERBEROS_V4 rejected as an authentication type
+Name (10.0.0.45:root): 
+
+
+总结：
+关于这些消息提示的功能（大多数软件都有)
+系统登录提示消息:
+/etc/motd
+
+sshd在登录时，输入密码前提示消息：
+# vim /etc/ssh/sshd_config
+banner  /etc/ssh_banner
+
+# vim /etc/ssh_banner
+this is 35 server ,don't try to login my system !!!!!
+
+# /etc/init.d/sshd restart
+
+
+
+例十：	ftp的日志	
+# vim /etc/vsftpd/vsftpd.conf
+xferlog_enable=YES			--打开日志记录功能
+xferlog_std_format=YES			--使用xferlog，而不是vsftpd.log
+xferlog_file=/var/log/xferlog		--打开注释，指定日志文件路径
+
+# /etc/init.d/vsftpd   reload
+
+
+	cat /var/log/xferlog	--只记录上传和下载的日志
+Tue May  3 06:24:57 2011 1 10.0.0.185 660 /etc/fstab b _ o r a ftp 0 * c
+Tue May  3 06:30:21 2011 1 10.0.0.185 0 /root b _ o r a ftp 0 * i
+Tue May  3 06:36:09 2011 1 10.0.0.132 2322 /etc/passwd b _ o r a ftp 0 * c
+Tue May  3 06:36:12 2011 1 10.0.0.132 660 /etc/fstab b _ o r a ftp 0 * c
+Tue May  3 06:36:24 2011 1 10.0.0.132 0 /etc/fstab b _ i r a ftp 0 * i
+Tue May  3 06:40:58 2011 1 10.0.0.86 0 /etc/passwd b _ i r a ftp 0 * i
+
+日志内容分析：
+以下面这条为例
+Tue May  3 06:40:58 2011 1 10.0.0.86 0 /etc/passwd b _ i r a ftp 0 * i
+
+Tue May  3 06:40:58 2011	current-time访问时间
+1				transfer-time传输时间，花费了多久
+10.0.0.86			remote-host 远程操作的主机名或IP地址
+0				byte-count   传输大小
+/etc/passwd			filename     操作的文件
+b				transfer-type    a表示ascii传输   b表示binary传输
+_				special-action-flag
+			   	＿   no action was taken
+			   	C	the file was compressed (not in use)
+			    	U   the file was uncompressed (not is use)
+			    	T   the file was tar'ed (not is use)
+i				direction	方向
+				i   the incoming transfer
+				o   the outgoing transfer
+r				access-mode	访问模式
+			   	a (anonymous) the anonymous guest user
+			   	g (guest)  the real but chrooted user
+			   	r (real)  the real user
+a				username	用户名
+ftp				service-name    服务名
+0				authentication-method  验证类型
+				 0 none
+				 1  RFC931 authentication (not in use)
+*				authenticated-user-id  
+				* symbol is used if an authenticated user id is not available
+i				completion-status
+			 c	 a complete transfer
+			 i	 an incomplete transfer	
+
+
+
+例十一：
+使用vsftpd自己带的日志
+
+# vim /etc/vsftpd/vsftpd.conf
+
+dual_log_enable=YES		--vsftpd.log和xferlog都会产生
+xferlog_std_format=NO		--此参数为NO，表示只有vsftpd.log产生
+
+
+# /etc/init.d/vsftpd reload
+
+# ls /var/log/vsftpd.log	--重装载服务后，就会产生这个日志文件，原来默认没有的
+
+# cat /etc/logrotate.d/vsftpd		--logrotate
+
+--这个日志里清楚的记录了登录的成功和失败，上传下载的成功和失败等各种信息
+
+
+--这两种日志的时间是比北京晚8个小时，也就是说北京时间为下午2点，它记录的是早上6点
+
+
+--注意：在rhel6下，这个时间是正常的时间，不是格林威治时间了
+
+
+
+例十二：
+
+1，关于下载限速
+
+# vim /etc/vsftpd/vsftpd.conf
+anon_max_rate			--匿名用户下载传输率
+
+local_max_rate			--本地用户下载传输率
+
+local_max_rate=10000   		--下载传输率为10k
+
+# /etc/init.d/vsftpd reload
+
+
+然后使用一个普通用户登录，去下载一个较大点的文件做测试
+
+
+关于限制链接数的
+# vim /etc/vsftpd/vsftpd.conf
+max_clients			--ftp服务允许的总的连接数
+max_per_ip			--单个客户端的最大连接数	
+max_per_ip=2   			--指定单个客户端的最大连接数为2
+
+# /etc/init.d/vsftpd  reload
+
+测试，使用一个客户端去连接ftp服务器，第三次连接就会报下面的错误 	
+[root@li ftp]# ftp 10.0.0.45
+Connected to 10.0.0.45.
+421 There are too many connections from your internet address.
+
+
+在测试限速下载时，如果要重复输入一个命令去查看状态的话，可以在前面加watch(默认是每2秒查看一次，但不支持ll这种别名，换成ls -l就可以)
+# watch ls  -lh
+
+
+
+
+例十三：vsftpd托管super daemon
+# netstat -ntlup |grep :21
+tcp        0      0 0.0.0.0:21                  0.0.0.0:*                   LISTEN      3460/vsftpd 
+
+
+# vim /etc/xinetd.d/vsftp
+
+service ftp
+{
+        socket_type             = stream
+        protocol                = tcp
+        wait                    = no
+        user                    = root
+        server                  = /usr/sbin/vsftpd
+        disable                 = no
+}
+
+# /etc/init.d/vsftpd  stop
+
+# /etc/init.d/xinetd restart
+
+
+# netstat -ntlup |grep 21	
+tcp        0      0 0.0.0.0:21                  0.0.0.0:*                   LISTEN      3486/xinetd     --由xinetd托管
+    
+# ftp 10.0.0.61	--但是登录失败
+Connected to 10.0.0.61.
+421 Service not available, remote server has closed connection
+ftp> 
+
+# vim /etc/vsftpd/vsftpd.conf
+listen=NO		--要改为no
+
+
+# /etc/init.d/xinetd restart
+
+ftp 10.0.0.61	--再次访问OK
+
+
+=======================================================================
+
+tcpwrapper	第三方防火墙	
+
+# rpm -qi tcp_wrappers-7.6-40.7.el5
+
+
+Summary     : A security tool which acts as a wrapper for TCP daemons.
+Description :
+The tcp_wrappers package provides small daemon programs which can
+monitor and filter incoming requests for systat, finger, FTP, telnet,
+rlogin, rsh, exec, tftp, talk and other network services.
+
+Install the tcp_wrappers program if you need a security tool for
+filtering incoming network services requests.
+
+This version also supports IPv6.
+
+
+
+/etc/hosts.allow
+/etc/hosts.deny
+
+man hosts.allow  或 man hosts.deny
+
+
+看程序是否支持tcpwrapper方式
+
+比如说看sshd
+# which sshd
+/usr/sbin/sshd
+
+# ldd /usr/sbin/sshd |grep wrap
+        libwrap.so.0 => /lib/libwrap.so.0 (0x00d39000)	--有此模块就表示支持
+
+
+# rpm -qf /lib/libwrap.so.0
+tcp_wrappers-7.6-40.7.el5
+
+
+
+--不是所有的服务都支持，很多软件编译时会有./configure --enable-libwrap来支持tcpwrapper
+
+
+
+
+该功能由两个文件来控制
+/etc/hosts.allow
+/etc/hosts.deny 
+访问控制机制为先去匹配/etc/hosts.allow,再去匹配/etc/hosts.deny，如果都没有，则都允许
+
+# vim /etc/hosts.deny
+sshd: all	--拒绝所有
+
+sshd: all    EXCEPT  10.0.0.104	--只允许104ssh上来
+
+sshd: all    EXCEPT  10.0.0.104 10.0.0.105 
+
+sshd: 10.0.0.0/255.255.255.0 EXCEPT  10.0.0.104	--拒绝10.0.0.0网段的人ssh访问，除了104外；注意子网掩码不支持/24写法
+
+	
+sshd:all:spawn echo "`date`" %c %d >> /var/log/tcpwrapperdeny.log
+--拒绝所有人登录，并把拒绝的时间和IP等信息保存到日志文件
+
+
+sshd:all:spawn wall %c "login denied"
+--拒绝所有人登录，只要一登录被拒绝，就发送广播信息
+
+
+sshd:all  EXCEPT 10.0.0.61: spawn wall %c "login denied"
+
+
+--man hosts.deny查看帮助
+
+
+
+例十四：ftp支持tcp_wrapper
+
+# ldd /usr/sbin/vsftpd |grep wrap
+	libwrap.so.0 => /lib64/libwrap.so.0 (0x00007fe2acf7c000)
+
+# vim /etc/hosts.deny 	--参考前面讲的sshd的写法，只要把sshd换成vsftpd就可以，其它写法一样
+vsftpd:all
+
+
+例十五：
+被动连接模式，控制服务器数据传输端口的范围
+
+# vim /etc/vsftpd/vsftpd.conf
+在最后加上
+pasv_enable=YES			--这一句默认不加也可以
+pasv_min_port=3000
+pasv_max_port=3005		--最小端口范围和最大端口范围可以自定义
+
+--然后使用ftp 登录后，输入ls使之有数据传输，netstat -nt去验证查看会发现端口一定会在3000到3005范围内
+
+=======================================================================
+习题：
+
+搭建ftp服务器，允许本地用户登录，但只允许a,b,c三个用户登录，所有的普通用户都默认登录到/ftp目录下；也允许匿名用户登录，登录到/var/ftp；
+	
+	匿名用户可以下载，不能上传
+a，b,c用户都只能上传和下载自己的文件;不同用户之间不能互相删除文件
+	只使用vsftp形式(/var/log/vsftpd.log)的日志记录，并且实现日志轮转(每月轮转一次，最多保留两个副本)
+	只使用主动模式的ftp连接方式
+	三个用户只能在/ftp目录下活动
+	允许匿名用户和普通用户下载的最大传输率都为100kb/s
+	允许ftp服务器最大的总连接为300
+	一个客户端最大只能有3个连接
+	只能在上午9:30到晚上的8:30访问ftp
+	允许10.0.0.0/24网段登录，但拒绝10.0.0.10登录，并将拒绝的信息保存到/var/log/ftp_denyip.log
+	在/var/ftp下保存光盘文件，用另一个机器配置yum，要求可以通过ftp方式的yum安装软件(也就是做一个远程的FTP式的yum源)
+
+	用另一台机每天晚上6点使用lftp下载ftp服务器的/ftp里的所有内容到自己的/backup目录下（--提示，只能用a,b,c三个普通用户登录到ftp服务器的/ftp目录,但lftp的a,b,c用户的密码如何写？man lftp)
+
+# mkdir /ftp
+# chmod 757 /ftp
+# chmod o+t /ftp
+
+# vim /etc/vsftpd/vsftpd.conf
+anonymous_enable=YES
+userlist_enable=yes
+userlist_deny=no
+local_root=/ftp
+
+
+local_umask=0066
+
+xferlog_enable=YES
+xferlog_std_format=NO
+
+pasv_enable=NO			--这个参数这样做是对的，但是只使用主动模式的数据连接方式会造成yum用不了（因为yum客户端默认使用被动）
+
+chroot_local_user=YES
+
+anon_max_rate=100000
+local_max_rate=100000
+
+max_clients=300	
+max_per_ip=3	
+
+listen=NO
+
+
+# vim /etc/vsftpd/user_list  --原来的基础上加下下面三个
+a
+b
+c
+ftp
+anonymous	--这个要加，否则会造成匿名用户用lftp登录不了，也会造成yum用不了
+
+
+# vim /etc/logrotate.d/vsftpd
+/var/log/vsftpd.log {
+    # ftpd doesn't handle SIGHUP properly
+    nocompress
+    missingok
+    monthly	  --加上这一句
+    rotate 2	  --加上这一句
+}
+
+# vim /etc/xinetd.d/ftp 
+service ftp
+{
+	disable	= no
+	socket_type = stream
+	protocol = tcp
+	wait = no
+	user = root
+	server = /usr/sbin/vsftpd
+	access_times = 9:30-20:30
+
+}
+
+# vim /etc/hosts.allow
+
+vsftpd: 10.1.1.0/255.255.255.0 EXCEPT 10.1.1.10 :spawn echo "`date`" %c >> /var/log/ftp_denyip.log
+
+
+
+
+
+
+
+

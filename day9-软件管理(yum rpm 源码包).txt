@@ -1,0 +1,579 @@
+软件包的安装与管理
+软件包的种类：
+.rpm	.deb（ubuntu,debian等系统使用的格式）	
+.src.rpm	
+源码包
+
+软件包的来源： 源码包-->.src.rpm-->.rpm
+
+包名-发布版本-支持平台.包类型后缀
+yum-3.2.22-20.el5.noarch.rpm 					
+yum-metadata-parser-1.1.2-16.el6.x86_64.rpm	
+xsane-0.991-5.el5.i386.rpm	--上面这三个都是rpm包
+
+nginx-0.8.4.tar.gz		--这种包需要解压，一般是源码包
+
+cacti-0.8.7b-1.fc8.src.rpm	--源rpm包
+
+
+i386支持386平台,386都是支持后在的586,686的平台，但是反过来686不一定支持386，因为686rpm包它有对平台做优化，那386就不一定支持
+noarch   支持任意平台
+x86_64	64位平台
+.rpm    红帽包管理 redhat packages management
+一般开发都开发出来的软件发布为源码包，因为源码包的安装比较麻烦。redhat公司自己发明了rpm包的格式，用一种很复杂方式去源码包做成rpm包，这样的话在redhat的linux上安装比较方便。
+其它的linux发行版也有其它的包格式，还有一种用得比较广泛的包格式叫.deb(用于ubuntu和debian等linux发行版)
+32位的软件是可以安装到64位的
+64位是不能安装到32位平台
+
+
+# mkdir /yum
+# mount /soft/rhel-server-6.3-x86_64-dvd.iso /yum/ -o loop
+
+
+rhel6下的iso镜像里的目录简单介绍（不同版本会有少许差异)
+Packages	--所有的软件包全在此目录（3654）
+
+isolinux
+images		--这两目录跟系统启动有关
+
+Packages里的软件包分成五大类：
+（32位和64位的软件都有）
+
+HighAvailability		--高可用
+LoadBalancer		--负载均衡
+ResilientStorage		--存储
+ScalableFileSystem		--文件系统
+Server			--服务器
+--这些目录名其实就是软件包的一个分类.目录里存放的是不同分类软件的信息（我们也叫软件仓库repository)
+
+
+RPM-GPG-KEY-redhat-release	--这是所有的软件包里gpg签名名字
+
+rpm包管理
+
+
+# rpm -ivh zsh-4.3.10-5.el6.x86_64.rpm
+warning: zsh-4.3.10-5.el6.x86_64.rpm: Header V3 RSA/SHA256 Signature, key ID fd431d51: NOKEY		
+Preparing...                                                  					
+########################################### [100%]
+ 1:zsh                                                     
+ ########################################### [100%]
+--这是成功安装
+
+# rpm -ivh zsh-4.3.10-5.el6.x86_64.rpm
+warning: zsh-4.3.10-5.el6.x86_64.rpm: Header V3 RSA/SHA256 Signature, key ID fd431d51: NOKEY		
+Preparing...                                                
+ ########################################### [100%]	
+package zsh-4.3.10-5.el6.x86_64 is already installed
+--这是已经安装过了
+
+关于上面的警告信息，其实就是在说操作系统没有这个软件包相关的签名信息;你用rpm命令来安装，有没有此警告无所谓。但如果你用yum来安装，yum里一个参数为gpgcheck=0的话，则表示没签名没问题，gpgcheck=1的话，则没签名就安装不了。
+解决这问题:
+# cd /yum/
+# rpm --import RPM-GPG-KEY-redhat-release
+
+
+依赖性的问题
+
+# rpm -ivh scsi-target-utils-1.0.24-2.el6.x86_64.rpm
+error: Failed dependencies:
+	libibverbs.so.1()(64bit) is needed by scsi-target-utils-1.0.24-2.el6.x86_64
+	libibverbs.so.1(IBVERBS_1.0)(64bit) is needed by scsi-target-utils-1.0.24-2.el6.x86_64
+	libibverbs.so.1(IBVERBS_1.1)(64bit) is needed by scsi-target-utils-1.0.24-2.el6.x86_64
+	librdmacm.so.1()(64bit) is needed by scsi-target-utils-1.0.24-2.el6.x86_64
+	librdmacm.so.1(RDMACM_1.0)(64bit) is needed by scsi-target-utils-1.0.24-2.el6.x86_64
+	perl(Config::General) is needed by scsi-target-utils-1.0.24-2.el6.x86_64
+	sg3_utils is needed by scsi-target-utils-1.0.24-2.el6.x86_64
+
+--这些依赖性怎么解决，如果你安装的是rhel的iso里的包，那么它的依赖包也一定在iso里（如果你是安装一个第三方的包，那么依赖性就不能保证全在iso里)
+
+
+解决的过程很艰辛，具体查找的过程就不写了，下面这是安装顺序，并且最后一句比较特殊，它是A依赖B，B又同时依赖A，要两个一起安装的一个典型例子
+
+例子：安装rpm -ivh xfig-plain-3.2.5-23.a.el6.x86_64.rpm这个软件的过程
+
+# rpm -ivh Xaw3d-1.5E-15.1.el6.x86_64.rpm
+# rpm -ivh xfig-3.2.5-23.a.el6.x86_64.rpm xfig-common-3.2.5-23.a.el6.x86_64.rpm
+# rpm -ivh xfig-plain-3.2.5-23.a.el6.x86_64.rpm
+
+
+冲突
+
+如果已经安装了A包的老版本，再安装A包的新版本
+报错里有conflict关键字的时候，就是冲突了，
+解决方法:
+方法一:一般来说要先干掉冲突的包，再安装新包
+方法二: rpm -ivh --force xxx.rpm来强制安装
+
+# rpm -ivh sg3_utils-libs-1.28-5.el6.x86_64.rpm
+file /usr/lib64/libsgutils2.so.2.0.0 from install of sg3_utils-libs-1.28-5.el6.x86_64 conflicts with file from package sg3_utils-libs-1.28-4.el6.x86_64
+
+
+但是也有特殊情况，比如我已经安装了A包，然后安装B包时，报两个包的其中一个文件冲突，怎么解决?
+方法一：把这个文件mv走，然后安装
+方法二: rpm -ivh --force  xxxx.rpm   强制安装，那么这个冲突的文件会被覆盖
+方法三: rpm -ivh --nodocs xxxx.rpm   这个nodocs的参数表示不安装它的文档文件（如果你冲突的文件是一个文档的话。如果不是文档文件，则要用其它相关参数
+
+
+
+# rpm -ivh  --nodeps       脱离依赖性     但是包不一定能用，因为你少了一些依赖包的功能
+# rpm -ivh  --nomd5       不检验md5值
+# rpm -ivh  --noscripts	    不想启用或者自动执行某些命令
+# rpm -ivh  --replacefiles  某个文件已经安装在系统上，或者冲突，可以用此参数覆盖 注意：此操作无法复原
+# rpm -ivh  --replacepkgs  重新安装某个已经安装过的包，比如说一个包你修改过，但不知道改在哪里，可以这样重新安装
+# rpm -ivh  --force    相当是强制安装，是--replacefiles和--replacepkgs
+# rpm -ivh  --test     测试是否能安装到此linux系统中
+
+
+# rpm -qa			--查看你系统上已经安装的rpm包（注意，只限于rpm包)
+# rpm -qa |grep mysql
+	
+# rpm -ql	
+# rpm -ql mysql-5.1.61-4.el6.x86_64	--查看一个软件包都安装了哪些文件，从这里也可以了解到linux安装软件是把文件按功能分散到各个目录，后面的包名不用写全
+
+
+# rpm -qpl mysql-5.1.61-4.el6.x86_64.rpm	--如果你一个软件包还没有安装，但你要查看一下安装会产生哪些文件分布，可以加个p参数，但后面的包名要写全	
+
+
+# rpm -qi mysql-5.1.61-4.el6.x86_64	--查看软件包有关信息和说明
+
+# rpm -qf `which mount`	--查看一个文件属于哪个软件包，rpm源码包查不到
+util-linux-ng-2.17.2-12.7.el6.x86_64
+# rpm -qc postfix		--查配置文件
+
+
+# rpm -e mysql-5.1.61-4.el6.x86_64	--删除一个rpm包的安装，但是删除也有依赖性.erase
+
+
+
+问题:使用firefox &后打开firefox失败，报错为command not found，如何解决?
+
+思路:
+1，报命令找不到，一般马上会想到是软件包没安装，去安装软件
+2，如果安装时报already installed，那说明，软件已经安装，但可能少了命令文件和其它一些文件
+3，最好的解决方法 rpm -ivh firefox-10.0.5-1.el6_2.x86_64.rpm --force
+
+
+
+src.rpm包
+xxx.src.rpm
+
+
+这种包是需要重编译	
+rpm 源码包，根据你的硬件情况编译成适合你的系统的rpm安装包
+
+# rpm -qpi acl-2.2.49-6.el6.x86_64.rpm
+......
+Source RPM: acl-2.2.49-6.el6.src.rpm	--用rpm -qi查看任何rpm包都会有类似这样的一句，表示它的src.rpm包的名字
+......
+
+
+
+你可以这样来理解，rpm包由src.rpm包产生，src.rpm包由源码包+.spec宏文件产生
+
+源码+spec  －－>  src.rpm －－ > rpm
+
+
+
+你现在的iso里的rpm包对应的src.rpm包都可以到redhat的ftp服务器上找到，路径为
+ftp://ftp.redhat.com/redhat/linux/enterprise/6Server/en/os/SRPMS
+
+
+# ls /root/rpmbuild	--此目录不存在
+
+# rpm -ivh zlib-1.2.3-27.el6.src.rpm	
+
+# ls /root/rpmbuild/
+SOURCES  	--这个目录里就有zlib的源码包
+SPECS		--这个目录里的文件就是宏文件
+
+
+
+编译方法一:
+# rpmbuild --ba zlib.spec 	--对宏文件编译成rpm包（需要源码的支持)
+
+Wrote: /root/rpmbuild/SRPMS/zlib-1.2.3-27.el6.src.rpm
+Wrote: /root/rpmbuild/RPMS/x86_64/zlib-1.2.3-27.el6.x86_64.rpm
+Wrote: /root/rpmbuild/RPMS/x86_64/zlib-devel-1.2.3-27.el6.x86_64.rpm
+Wrote: /root/rpmbuild/RPMS/x86_64/zlib-static-1.2.3-27.el6.x86_64.rpm
+Wrote: /root/rpmbuild/RPMS/x86_64/minizip-1.2.3-27.el6.x86_64.rpm
+Wrote: /root/rpmbuild/RPMS/x86_64/minizip-devel-1.2.3-27.el6.x86_64.rpm
+Wrote: /root/rpmbuild/RPMS/x86_64/zlib-debuginfo-1.2.3-27.el6.x86_64.rpm
+--编译完后，在倒数几行那都有类似上面的信息，可以看到已经编译成了rpm包了
+
+
+编译方法二:
+# rpmbuild --rebuild zlib-1.2.3-27.el6.src.rpm	 --直接对src.rpm包编译出rpm包，结果与上面方法一样
+
+
+两种方法对较:
+第二种就是不需要对宏文件进行修改，直接编就可以
+第一种就是你可以按自己的需求对宏文件进行修改，再编
+
+
+问题:
+如果你要在你的linux上安装一个第三方的软件，你希望下载一个rpm包来安装，如果你在http://www.rpmfind.net网站没有找到对应该你的操作系统版本的rpm包，你会怎么做?
+
+你下载不对应你系统的版本的包来安装很可能会产生问题，那么你可以有多种方法:
+方法一:找src.rpm包，然后在你的操作系统上编出rpm包，那么这个rpm包肯定是适合你的系统平台的
+方法二:用源码版
+
+
+yum
+
+简单来说就是方便你安装rpm软件包，会自动帮你解决依赖性
+在ubuntu里使用和yum类似的软件名为apt-get
+
+配置yum你需要配置服务端（软件仓库)和客户端(要安装软件的机器)
+
+yum的配法分为本地和远程，这里我们先只使用本机yum(也就是服务端和客户端在同一台机器)
+
+
+软件仓库的配法，直接把iso挂载到一个目录就OK了
+
+# mkdir /yum	--你可以随意建立一个iso的挂载目录，我这里为/yum/
+# mount /soft/rhel-server-6.3-x86_64-dvd.iso /yum/ -o loop
+# echo "mount /soft/rhel-server-6.3-x86_64-dvd.iso /yum/ -o loop" >> /etc/rc.local --做开机挂载
+
+
+
+
+客户端的本地yum配法
+
+# vim /etc/yum.conf	--主配置文件，但一般不用它
+
+
+/etc/yum.repos.d/xxx.repo	--这个目录下只要以.repo结尾的文件就是子配置文件
+
+
+# rm /etc/yum.repos.d/* -rf	--默认有两文件，没用，删掉
+# vim /etc/yum.repos.d/localyum.repo	--新建一个以repo结尾的文件就可以
+
+[server]			--软件仓库名，自定义
+name=server		--标识名，自定义
+baseurl=file:///yum/		--这一条最重要，它表示你的仓库的地址。本地仓库的写法file:///   要接三个/
+enabled=1		--等于1表示打开仓库，等于0表示不使用此仓库
+gpgcheck=0		--不验证gpg签名
+
+
+
+上面这一段配置就包含了iso镜像里的大部分软件，完整的配置如下
+
+[Server]
+name=Server
+baseurl=file:///yum/Server
+enabled=1
+gpgcheck=0
+
+[HighAvailability]
+name=HighAvailability
+baseurl=file:///yum/HighAvailability
+enabled=1
+gpgcheck=0
+
+[LoadBalancer]
+name=LoadBalancer
+baseurl=file:///yum/LoadBalancer/
+enabled=1
+gpgcheck=0
+
+[ResilientStorage]
+name=ResilientStorage
+baseurl=file:///yum/ResilientStorage/
+enabled=1
+gpgcheck=0
+
+[ScalableFileSystem]
+name=ScalableFileSystem
+baseurl=file:///yum/ScalableFileSystem
+enabled=1
+gpgcheck=0
+
+
+	
+保存后，使用yum clean all刷新配置（建议修改过yum的配置后就使用一次这个命令)
+# yum clean all
+# yum list  			--列出所有仓库的软件，能列出来表示你的配置无误
+# yum repolist
+
+
+# yum install mysql
+
+
+# yum install mysql*
+
+
+
+=========================================================================
+ Package                      Arch     Version            Repository
+		                                                                Size
+=========================================================================
+Installing:
+mysql                        x86_64   5.1.61-4.el6       server   882 k
+mysql-bench                  x86_64   5.1.61-4.el6       server   427 k
+mysql-connector-java         noarch   1:5.1.17-6.el6     server   1.4 M
+
+.......................此处省略N多字！
+
+Total download size: 26 M
+Installed size: 165 M
+Is this ok [y/N]: 		--OK的话就输入y回车确认，就开始自动安装了
+
+
+如果你yum install xxx -y  或者yum remove xxx -y
+
+yum remove 或者  yum erase来删除rpm软件包
+
+
+yum remove mysql*   --要删除的包数和yum install mysql*不一定一样的
+
+
+例：下面我用yum remove mysql*时删除了如下这么多个软件（不同情况测试是会不一样的）。
+
+
+Dependency Removed:
+akonadi.x86_64 0:1.2.1-2.el6                                    cronie.x86_64 0:1.4.4-7.el6                               
+cronie-anacron.x86_64 0:1.4.4-7.el6                             crontabs.noarch 0:1.10-33.el6                             
+kcoloredit.x86_64 0:4.3.3-2.el6                                 kdeaccessibility.x86_64 1:4.3.4-5.el6                     
+kdeaccessibility-libs.x86_64 1:4.3.4-5.el6                      kdeadmin.x86_64 7:4.3.4-5.el6                             
+kdeartwork-screensavers.x86_64 0:4.3.4-7.el6                    kdebase.x86_64 6:4.3.4-5.el6                              
+kdebase-libs.x86_64 6:4.3.4-5.el6                               kdebase-runtime.x86_64 0:4.3.4-9.el6                      
+kdebase-runtime-libs.x86_64 0:4.3.4-9.el6                       kdebase-workspace.x86_64 0:4.3.4-23.el6                   
+kdebase-workspace-libs.x86_64 0:4.3.4-23.el6                    kdegames.x86_64 6:4.3.4-5.el6                             
+.........                                 
+
+Complete!
+
+
+问题是我再次yum install mysql*安装时只安装9个，那么另外50个软件包要不要再装回来呢？
+
+=============================================================================================================
+ Package                              Arch                   Version                            Repository              Size
+=============================================================================================================
+Installing:
+ mysql                                x86_64                 5.1.61-4.el6                       server                 882 k
+ mysql-bench                          x86_64                 5.1.61-4.el6                       server                 427 k
+ mysql-connector-java                 noarch                 1:5.1.17-6.el6                     server                 1.4 M
+ mysql-connector-odbc                 x86_64                 5.1.5r1144-7.el6                   server                 114 k
+ mysql-devel                          x86_64                 5.1.61-4.el6                       server                 127 k
+ mysql-libs                           x86_64                 5.1.61-4.el6                       server                 1.2 M
+ mysql-server                         x86_64                 5.1.61-4.el6                       server                 8.6 M
+ mysql-test                           x86_64                 5.1.61-4.el6                       server                 5.2 M
+Installing for dependencies:
+ perl-DBD-MySQL                       x86_64                 4.013-3.el6                        server                 134 k
+
+Transaction Summary
+=============================================================================================================
+Install       9 Package(s)
+
+Total download size: 18 M
+Installed size: 136 M
+Is this ok [y/N]: 
+
+
+答案：如果你不能确认这些包是否需要，请最好装回去.
+
+
+
+# cat /var/log/yum.log |grep "Aug 20"|grep Erased |awk '{print $5}' |xargs yum install -y
+
+
+
+－－－－－－－－－－－－－－－－－－－－－－－－－－－－－－－－－－－
+
+对应的组的用法
+yum grouplist
+yum groupinstall 组名
+yum groupinstall "组名1 组名2"
+yum groupremove 组名 
+
+
+-－－－－－－－－－－－－－－－－－－－－－－－－－－－－－－－－－－－－
+使用yum时你可能会出现的几个问题:
+
+1,有如下错误
+file:///yun/repodata/repomd.xml: [Errno 14] Could not open/read file:///yun/repodata/repomd.xml
+--这就表示这个路径找不到软件仓库,检查你的路径是否正确，改正过来就可以
+
+2,由上面引出的问题，它什么会报找不到xxx/repodata/repomd.xml呢?
+
+yum的路径不是写软件包的路径，而是写repodata的路径（你可以把repomd.xml文件想象成是这个仓库里的物品清单)
+
+
+3,比如你当前的目录下有一个文件叫perlaaa,那么你在当前目录下使用yum install perl*会现问题
+
+# yum install perl*
+Loaded plugins: product-id, refresh-packagekit, security, subscription-
+: manager
+Updating certificate-based repositories.
+Unable to read consumer identity
+Setting up Install Process
+No package perlsdfsafdsa available.
+Error: Nothing to do
+
+解决方法;换个目录执行yum install perl*就可以了
+
+
+4,如果你安装时出现类似下面的错误
+
+# yum install vsftpd 
+
+warning: rpmts_HdrFromFdno: Header V3 RSA/SHA256 Signature, key ID fd431d51: NOKEY
+
+
+Public key for vsftpd-2.2.2-11.el6.x86_64.rpm is not installed
+
+解决方法：
+1，rpm --import RPM-GPG-KEY-redhat-release
+2，把yum配置文件里gpgcheck=0  把1改为0
+
+
+5，下面的错误表示当前yum正在被其它进程使用。解决方法：查看是否有其它终端或进程在使用yum
+  yum不能双开。
+Another app is currently holding the yum lock; waiting for it to exit...
+ The other application is: yum
+Memory :  61 M RSS (360 MB VSZ)
+Started: Wed Aug 20 15:06:42 2014 - 10:18 ago
+State  : Sleeping, pid: 14824
+
+
+gpgcheck=0
+[ScalableFileSystem]
+name=server
+baseurl=file:///yum/ScalableFileSystem
+enabled=1
+gpgcheck=0
+
+	
+可以使用yum来安装第三方软件，它会在软件仓库里解决依赖
+# yum install /root/AdobeReader_chs-8.1.7-1.i486.rpm	--yum解决依赖
+		
+# rpm -ivh /root/AdobeReader_chs-8.1.7-1.i486.rpm 		--自己解决依赖
+
+
+6. 挂载/yum目录
+要保持/yum一直是挂载的
+# vim /etc/rc.local 
+mount -o loop /share/iso/rhel-server-6.3-x86_64-dvd.iso /yum/	--可以开机自动挂载
+
+------------------------------------------------------------------
+
+如何手动自己做一个软件仓库
+
+1,mkdir /myrepo/	--创建一个目录，存放第三方的这些rpm包(最好保证所有的依赖包都放在这里)
+
+2,cp xxx.rpm /myrepo/	--把所有这些第三方包拷贝到此目录
+
+
+3，# yum install createrepo	--安装这个软件，就会有createrepo命令
+# createrepo /myrepo/ 		--此命令会自动扫描你这个目录里所有的rpm包，并产生对应的repodata/repomd.xml文件
+
+
+4,在/etc/yum.repos.d/localyum.repo文件里再加上一段
+[myrepo]
+name=myrepo
+baseurl=file:///myrepo/
+enabled=1
+gpgcheck=0
+
+源码包
+
+rpm包:优点有安装方便，速度快；缺点有功能被定死
+源码包：优点有功能可以自定义；缺点有安装麻烦，要求安装人员技术水平较高
+
+
+www.sourceforge.net 		 --这个网站是一个源码的发布平台
+
+# wget http://nchc.dl.sourceforge.net/sourceforge/fuse/fuse-2.7.1.tar.gz
+# wget http://tuxera.com/opensource/ntfs-3g_ntfsprogs-2014.2.15.tgz
+
+fuse-2.7.1.tar.gz	-- file system in user space,就是一个文件系统的挂载模块
+ntfs-3g_ntfsprogs-2014.2.15.tgz	  --让linux支持ntfs格式挂载的一个软件包
+
+问题:
+linux支持ntfs吗?
+linux内核是支持的，只不过rhel内核没有加上这个功能，因为rhel没有必要去支持ntfs这种文件系统，实际环境里面也不可能有这种需求。但学习环境还是可能用到，因为有人要用ntfs格式的移动硬盘与linux拷数据
+
+解决方法:
+第一:编译内核
+第二：找第三方软件，安装上来支持
+
+
+
+一般安装一个源码的步骤
+1，最好先看readme或install文件找到它的安装说明
+2，./configure		--这个命令后可接各种不同的参数，这些参数就代表了你要加哪些功能。今天不讨论其它参数，只讨论一个  --prefix=/path ,指定安装路径
+3，make			--这个命令的执行时间比较长（以软件大小而异)，它就相当于是按照你定义好参数的把这个软件做出来
+4，make install		--是把做好的软件安装到你指定的目录（这个指定参数也是在./configure里可以去改的)
+
+
+
+
+tar xf  fuse-2.7.1.tar.gz -C  /usr/src/	  --这条命令是把这个源码包解压到/usr/src
+
+# cd /usr/src/fuse-2.7.1/
+
+# ./configure
+# make
+# make install
+# modprobe fuse    --把安装好的模块加载		在rhel6.3下测试的是自带了fuse模块，也就是说你可以不用装这个软件，直接去装下面的软件就可以支持ntfs了
+
+
+# tar xf /soft/ntfs-3g_ntfsprogs-2014.2.15.tgz -C /usr/src/
+# cd /usr/src/ntfs-3g_ntfsprogs-2014.2.15/
+# ./configure
+# make
+# make install
+
+
+# which mount.ntfs-3g	--安装完后，有此命令就表示成功了
+/sbin/mount.ntfs-3g
+
+
+用此命令去挂载ntfs文件系统的用法
+# mount.ntfs-3g /dev/sdxx  /mnt 
+
+
+对ldconfig的讨论
+在fuse源码里的readme文件里有这么一句
+
+You may also need to add '/usr/local/lib' to '/etc/ld.so.conf' and/or
+run ldconfig.
+
+
+
+先理解什么是库文件
+# ldd /bin/ls		--库可以理解成运行程序需要的功能（类似windows里的.dll文件),此命令就是查看ls命令需要使用哪些库，这些库缺一不可
+	linux-vdso.so.1 =>  (0x00007fffc79ff000)
+	libselinux.so.1 => /lib64/libselinux.so.1 (0x0000003d12200000)
+	librt.so.1 => /lib64/librt.so.1 (0x0000003d11600000)
+	libcap.so.2 => /lib64/libcap.so.2 (0x0000003d14200000)
+	libacl.so.1 => /lib64/libacl.so.1 (0x0000003511800000)
+	libc.so.6 => /lib64/libc.so.6 (0x0000003d10a00000)
+	libdl.so.2 => /lib64/libdl.so.2 (0x0000003d10600000)
+	/lib64/ld-linux-x86-64.so.2 (0x0000003d10200000)
+	libpthread.so.0 => /lib64/libpthread.so.0 (0x0000003d10e00000)
+	libattr.so.1 => /lib64/libattr.so.1 (0x0000003d1f200000)
+
+我安装fuse这个软件，它的库文件默认会安装到  $PREFIX/lib,所以它会安装到/usr/local/lib.
+但如果另一个软件要用到fuse相关的库，那么它能否找到/usr/local/lib下的库文件呢?
+默认系统只会找/lib/,/lib64/,/usr/lib/,/usr/lib64这几个目录，所以/usr/local/lib你可以加到ldconfig里，让别人要使用你的库的时候能够找到你的位置
+
+
+# vim /etc/ld.so.conf.d/fuse.conf	--在此子目录里建立一个自定义的名，只要以.conf结尾就可以，加上你的库的目录路径
+/usr/local/lib
+# ldconfig		--保存后，使用此命令让它生效
+
+源版包的删除，直接rm -rf 删除它所有的相关文件就行了
+
+
+
+
+
+
+
+
+
+
+
+

@@ -1,0 +1,494 @@
+RSync	文件备份同步
+
+什么是rsync？
+它是一款实现远程同步功能的软件，它在同步文件的同时，可以保持原来文件的权限、时间、软硬链接等附加信息。
+
+rsync 包括如下的一些特性：
+1.可以镜像保存整个目录树和文件系统
+2.容易做到保存原有的权限，owner,group,时间(修改时间,modify time)，软硬链接
+3.传输效率高，使用同步算法，只比较变化的
+4.支持匿名传输，方便网站镜像
+
+rsync的安装:
+# yum install rsync -y
+
+配置文件:
+rsync的主要有以下三个配置文件，文件默认不存在，请手动创建它。
+1.rsyncd.conf(主配置文件)		
+2.rsyncd.secrets(密码文件)
+3.rsyncd.motd(rysnc服务器信息)
+
+rsync 常用选项：
+-v    	verbose			
+-a    	归档模式，递归的方式传输文件（-a = -rlptgoD）
+	-r	递归
+	-l	保留软链接
+	-p	权限
+	-t	文件修改时间
+	-g	属组，保留特殊设备文件
+	-o	属主
+	-D	等于--devices  --specials    表示支持b,c,s,p类型的文件
+-R	保留相对路径
+-H     	保留硬链接
+-A  	保留acl权限
+
+
+rsync命令的普通用法：
+rsync -av /home/    /backup     		--本机上的同步，把/home目录下的内容同步到/backup目录下(包括隐藏文件)
+rsync -av /home/ 192.168.1.10:/backup		--把本地的/home目录内容，同步到远端10的/backup目录下
+rsync -av 192.168.1.20:/backup/ /backup/	--把远端20的/backup目录下的内容同步到本地的/backup目录
+（注意：路径写法的区别！原目录后面加不加/也影响你的同步目录；没加/，就是将目录本身同步过去；目录加/，就是将目录里的内容同步过去！）
+
+最简单的目录同步方法：
+如果远程主机的目录中有一个文件被删除了，可是使用命令将本机目录中内容进行同步！
+# rsync  -aHAXv --delete /test/ /test2/
+
+rsync本身不具备控制功能和日志记录功能，需要把rsync做成服务的形式，并加上一些控制功能或日志记录功能。
+可以使用命令：# man rsyncd.conf 查看如何添加这些功能：
+
+服务器端的配置：
+1，第一步：
+# vim /etc/rsyncd.conf		--此文件不存在，需要手动建立
+
+motd file=/etc/rsyncd.welcome		--定义指定的文件路径
+
+[test]						--参数组名称
+path=/share/150105			--定义参数组同步目录路径
+
+
+
+# vim /etc/rsyncd.welcome	--手动建立自己定义的motd文件，并写上自定义的欢迎信息
+*******************************************
+****** ^_^ Welcome to use rsync！^_^ ******
+*******************************************
+2，第二步：
+--修改服务启动脚本
+# vim /etc/xinetd.d/rsync	
+
+# service rsync
+{
+	disable 		= no		--yes改为no  打开rsync服务功能
+	socket_type     = stream
+	wait            = no		--yes改为no	（其他不用管）
+	user            = root
+	server          = /usr/bin/rsync
+	server_args     = --daemon
+	log_on_failure  += USERID
+}
+
+第三步：
+# /etc/init.d/xinetd restart		--重启服务
+
+# netstat -ntlup |grep 873			--服务端就会有873的端口在监听了
+tcp        0      0 0.0.0.0:873                 0.0.0.0:*                   LISTEN      4080/xinetd  
+
+
+客户端的操作：
+
+# rsync -v 192.168.1.10::		--查看10这个服务器同步路径名
+*******************************************
+****** ^_^ Welcome to use rsync！^_^ ******
+*******************************************	--这就是你rsyncd.welcome里写的欢迎内容
+
+notes  						--这额个就是同步路径名				  
+
+
+# rsync -a 192.168.1.10::notes /notes/
+--这样同步，是不需要密码的；注意notes为共享路劲名称，语法上在该名称前面有两个“:”！
+
+--没有密码有好处也有坏处，好处是不需要密码方便写脚本做远程同步。如果要密码写脚本就要用到expect自动应答。坏处就是不安全，但你可以使用iptables等来加强安全。
+--如果你希望有密码，也不用传密码的话，可以用rsyncd本身自带的secrets file来做验证的用户
+（secrets file = /etc/rsyncd/rsyncd.secrets）
+
+--如果同步报permission denied这种错误，可能是服务端selinux没有关闭
+# iptables -F
+
+关闭selinux的方法：
+1，setenforce 0    	--这是马上把selinux由强制模式改成警告模式
+2, vim /etc/selinux/config
+SELINUX=disabled	--把这个改成disabled，然后需要重启电脑才能生效
+
+在上面的基础上加上一些更加强大的功能
+
+要求：
+1. 把日志记录到/var/log/rsyncd.log
+	--4种方式，xinetd：log_type(SYSLOG/FILE) rsyncd：log file和syslog facility
+2. 共享模块要求隐藏(也就是说客户端查看不到这个模块名（notes）)
+	--list
+3. 同时只能1个客户端连接进行同步这个module（notes）
+	--2种方式，xinetd：instances rsyncd：max connections
+4. 只能允许192.168.1.107(ip你自定义)同步这个module
+	--2种方式，xinetd：only_from rsyncd：hosts allow
+5. 只能早上9点到下午5点同步
+	--xinetd:access_times
+
+# vim /etc/rsyncd.conf 
+
+motd file=/etc/rsyncd.welcome
+
+[notes]								--参数组名称
+path=/var/www/html						--设置rsync同步文件路径
+list=false							--隐藏共享模块名称（notes）
+max connections=1						--设置同一时间内最大的链接数
+log file=/var/log/rsyncd.log					--设置指定的日志文件路径
+hosts allow=192.168.1.107 192.168.1.109 (192.168.1.0/24）	--设置限定的ip或网段
+
+---------------------------------------------------------------------------------------------
+
+实时同步
+实现实时同步（也就是源目录中的内容发生变化，它就会触发同步，实现两边目录中内容完全相同)
+inotify+rsync
+
+软件名称：
+inotify-tools-3.13.tar.gz
+软件下载路径：（直接输入以下命令）
+# wget http://ncu.dl.sourceforge.net/project/inotify-tools/inotify-tools/3.13/inotify-tools-3.13.tar.gz
+
+# tar xzvf inotify-tools-3.13.tar.gz -C /usr/src/
+# cd /usr/src/inotify-tools-3.13/
+# ./configure 
+# make
+# make install
+
+--安装完后，就会产生下面两个命令
+/usr/local/bin/inotifywait
+/usr/local/bin/inotifywatch
+
+
+# /usr/local/bin/inotifywait --help	
+/usr/local/bin/inotifywait: error while loading shared libraries: libinotifytools.so.0: cannot open shared object file: No such file or directory
+--这里报错，找不到那个库，但这个库实际上是在/usr/local/lib下的，所以解决方法，把/usr/local/lib/加到ldconfig里
+-m   --monitor					--监控
+-r   --recursive				--目录和子目录都监控
+-q   --quiet					--安静模式，尽可能少输出信息
+-e   --event					--监控的事件，access，modify，attrib......
+
+做测试：
+测试本机/test目录里一有（增，删，改，属性改变)，就会同步到/test2目录
+
+--使用下面的脚本来做
+
+
+#vim /tmp/1.sh
+
+#!/bin/bash
+
+
+/usr/local/bin/inotifywait -mrq  -e modify,delete,create,attrib,move /test |while read files
+do
+	rsync -a --delete /test/ /test2/
+done
+
+
+输入以下命令，执行上面写的脚本！
+# nohup sh /tmp/1.sh  &
+
+
+再然后对/test进行各种操作，验证可以实时同步到/test2
+
+
+--实现双向的实时同步
+也有相关的软件(比如unison)可以专门来做双向的实时同步
+但我们就可以用inotify反向再做一次再写一个脚本也一样可以简单去实现
+
+---------------------------------------------------------------------------------------------
+
+使用rsync的secrets file的方法做远程同步
+	
+例：      
+远程被同步端	本地同步端	
+192.168.1.107	192.168.1.109
+我要实现把192.168.1.109上的/localtest/目录里的内容实时同步到192.168.1.107的/remotetest/目录
+
+
+实现过程
+第一大步：在远程被同步端192.168.1.107上操作
+# mkdir /remotetest/	--创建测试的同步目录
+
+# vim /etc/rsyncd.conf
+uid=root		
+gid=root		--这里指定使用root身份同步，否则默认使用nobody用户（这样你需要把/remotetest/目录改成757的权限，才有权限写)
+
+[testsource]
+path=/remotetest/
+ignore errors
+read only=no		--服务级别给写权限
+auth users=test		--验证的用户取名为test
+secrets file=/etc/rsyncd.secrets	--验证用户test的用户名和密码的存放文件，此文件需要同步端和被同步端都要有（这样我们就可以用这种方式来进行验证，而不需要远程的ssh密码验证了）
+hosts allow=192.168.1.109		--进一步加强安全，只允许192.168.1.109同步
+
+
+# vim /etc/rsyncd.secrets	--创建这个密码文件，用户名要与上面的auth users指定的一致，密码随意（我这里以321来测试)
+test:321
+
+# chmod 600 /etc/rsyncd.secrets	--为了安全性，把权限改成600,只让root读写(很多其它软件的密码文件也会要求你改成600权限)
+
+
+# vim /etc/xinetd.d/rsync 
+	disable = no		-- disable 后面值由yes改为no
+
+# /etc/init.d/xinetd restart	--重启服务
+# chkconfig xinetd on	--设置开机自动启动
+
+
+
+第二大步:在本地同步端192.168.1.109上操作
+先安装inotify软件，步骤参照上面过程，这里省略
+
+# mkdir /localtest/	--创建测试的同步目录
+# vim /etc/rsyncd.secrets	--也要创建这个密码文件，里面只写密码就可以了。用户我们在后面的脚本里的命令里指定
+321
+# chmod 600 /etc/rsyncd.secrets  --也改成600的权限
+
+# vim /bin/rsync.sh			--脚本及其内容
+
+#!/bin/bash
+/usr/local/bin/inotifywait -mrq  -e modify,delete,create,attrib,move /localtest |while read files
+do
+	 rsync -a --delete  --password-file=/etc/rsyncd.secrets /localtest/ test@192.168.1.107::testsource
+done
+
+# chmod 755 /bin/rsync.sh   --给执行权限，方便执行
+
+# nohup sh /bin/rsync.sh &   --后面挂起执行
+
+# vim /etc/rc.local		--加到rc.local里让其开头自动启动
+nohup sh /bin/rsync.sh &
+
+第三步：测试
+在192.168.1.109的/localtest目录中进行任何的操作，然后去192.168.1.107的/testsource目录中查看是否成功同步！
+
+
+---------------------------------分隔线----------------------------------
+
+系统备份：
+
+什么是系统备份？
+将系统上的重要资料或者系统本身进行备份，防止数据丢失！
+
+常用备份工具和命令：
+1.cp、scp		本地拷贝和远程拷贝！
+2.rsync		同步，远程和本地实时同步！
+3.dd		实现存储最底层的拷贝（不需要文件系统）！
+4.amanda		最早的开源备份软件！
+5.dump		linux上的一个备份工具（该工具只能对一个分区进行备份）！
+6.其它		自行翻阅资料
+
+备份分类：
+1.全备 		全部备份
+2.增量备份		只对做了修改的进行备份
+3.累计增量备份	对一段时间内有修改过的内容进行备份
+
+备份的多种方式：
+1.本地备份，如将/aaa/test文件备份到/bbb/test.bak，这样的话如果你的存储设备损坏，数据一样会丢失！
+2.将本机硬盘上的内容备份到另一个硬盘上，这样可以预防硬盘损坏后带来的数据丢失！
+3.异地备份，如果你备份的硬盘和你的源硬盘处于一个机房，如果发生意外（火灾，地震等），那么数据还是会丢失，那么我们可以最异地备份，将本地的数据备份到远端的设备上，这种方式也称：异地容灾！
+
+备份存放设备：
+1.硬盘		性能欠佳（物理磁头容易损坏），价格偏贵！
+2.磁带机		有磁带驱动器和磁带构成，是一种经济、可靠、容量大、速度快的备份设备，相对同容量的硬盘来说价格更加便宜，性能也更加可靠！
+
+备份策略和原理：
+
+使用linux上的dump工具来演示备份策略的制定和自动备份！
+# yum install -y dump
+
+一般要实现备份的过程：
+1.根据你要备份的数据进行分析，评估并设计备份的策略（如：使用什么备份工具，多久进行备份一次，要不要进行增量或累计增量备份）
+2.根据策略将备份脚本写好！
+3.使用crontab做时间任务，从而实现自动备份，并且加上备份成功与否的通知（如mail通知、短信通知等等）！
+
+策略格式：
+
+备份日期：		              星期
+	1	2	3	4	5	6	7	1
+			           备份周期
+	全	增	增	累	增	增	累	全
+			           备份策略
+	0	1	2	1	2	3	2	0
+命令选项：
+-0123456789 　	备份的层级
+-f<设备名称> 　	指定备份设备（需要备份到哪个地方的路径）
+-u 　		备份完毕后，在/etc/dumpdates中记录备份的文件系统，层级，日期与时间等（备份整个分区时才会使用，备份单个目录或文件不需要使用）
+
+自动备份脚本示例：
+周1：# dump -0u /dev/sda8 -f /backup/sda8_0_1.dump
+周2：# dump -1u /dev/sda8 -f /backup/sda8_1_2.dump
+周3：# dump -2u /dev/sda8 -f /backup/sda8_2_3.dump
+周4：# dump -1u /dev/sda8 -f /backup/sda8_1_4.dump
+周5：# dump -2u /dev/sda8 -f /backup/sda8_2_5.dump
+. . . . . . . . . 周六，周日省略！
+
+****************************************************************************************************************
+****************************************************************************************************************
+*＊		                    命令解析：					         * *
+* *  # dump 	-1u 	/dev/sda8		 -f 	/backup/sda8_1_4.dump      	         * *
+* *  备份命令	选项	需要备份的路径	选项	备份到该路径	                         * *
+****************************************************************************************************************
+****************************************************************************************************************
+
+备份后如何查看备份文件中的内容呢？
+# restore -t -f 备份后的文件
+
+怎么样才能实现每天自动备份呢？
+将每天备份的命令写成脚本：
+# vim /tmp/1.sh				周一执行
+dump -0u /dev/sda8 -f /backup/sda8_0_1.dump
+	
+# vim /tmp/2.sh				周二
+dump -1u /dev/sda8 -f /backup/sda8_1_2.dump
+
+# vim /tmp/3.sh				周三
+dump -2u /dev/sda8 -f /backup/sda8_2_3.dump
+
+# vim /tmp/4.sh				周四
+dump -1u /dev/sda8 -f /backup/sda8_1_4.dump
+
+# vim /tmp/5.sh				周五
+dump -2u /dev/sda8 -f /backup/sda8_2_5.dump
+
+# vim /tmp/6.sh				周六
+dump -3u /dev/sda8 -f /backup/sda8_3_6.dump
+
+# vim /tmp/7.sh				周日
+dump -2u /dev/sda8 -f /backup/sda8_2_7.dump
+
+注意：上面的办法如果第二周再去执行的时候会覆盖前一个周备份的数据，那如何才能使其不会覆盖我们之前的备份呢？
+
+将备份后的文件名换种方式命名：
+# vim /tmp/1.sh
+mkdir /backup/`date +%Y%m%d`
+dump -0u /dev/sda8 -f /backup/`date +%Y%m%d`/sda8_0_1.dump
+
+# vim /tmp/2.sh
+dump -1u /dev/sda8 -f /backup/`date -d "-1 days" +%Y%m%d`/sda8_1_2.dump
+
+。。。。。。
+
+# vim /tmp/7.sh
+dump -1u /dev/sda8 -f /backup/`date -d "-6 days" +%Y%m%d`/sda8_2_7.dump
+
+脚本写好后，需要使用crontab时间任务实现自动备份：
+01 2 * * 1  root sh /tmp/1.sh
+01 2 * * 2  root sh /tmp/2.sh
+01 2 * * 3  root sh /tmp/3.sh
+01 2 * * 4  root sh /tmp/4.sh
+01 2 * * 5  root sh /tmp/5.sh
+01 2 * * 6  root sh /tmp/6.sh
+01 2 * * 7  root sh /tmp/7.sh
+
+或者把上面的多个脚本写成一个脚本，通过脚本进行判断今天是星期几来确定执行哪一天的备份
+
+# vim /tmp/10.sh
+#!/bin/bash
+
+day=`date +%A`
+
+case "$day" in
+	Monday )
+		mkdir /backup/`date +%Y%m%d` -p
+		dump -0u /dev/sda8 -f /backup/`date +%Y%m%d`/sda8_0_1.dump
+		;;
+	Tuesday )
+		dump -1u /dev/sda8 -f /backup/`date -d "-1 days" +%Y%m%d`/sda8_1_2.dump
+		;;
+	Wednesday )
+		dump -2u /dev/sda8 -f /backup/`date -d "-2 days" +%Y%m%d`/sda8_2_3.dump	
+		;;
+	Thursday )
+		dump -1u /dev/sda8 -f /backup/`date -d "-3 days" +%Y%m%d`/sda8_1_4.dump	
+		;;
+	Friday )
+		dump -2u /dev/sda8 -f /backup/`date -d "-4 days" +%Y%m%d`/sda8_2_5.dump	
+		;;
+	Saturday )
+		dump -3u /dev/sda8 -f /backup/`date -d "-5 days" +%Y%m%d`/sda8_3_6.dump	
+		;;
+	Sunday )
+		dump -2u /dev/sda8 -f /backup/`date -d "-6 days" +%Y%m%d`/sda8_2_7.dump	
+		;;
+	* )
+		echo "日期有误"
+esac
+
+
+脚本写完后，在时间任务里写上你需要在什么时间执行该脚本就可以了！
+如：
+# vim /etc/crontab
+01 2 * * * 		root 	sh /tmp/10.sh
+
+备份后恢复的方法：
+# pwd
+/dump
+# restore -r -f /backup/sda8_0_1.dump
+# ls
+dump0  lost+found  restoresymtable
+# restore -r -f /backup/sda8_1_4.dump
+# ls
+dump0  dump1  dump2  dump3  lost+found  restoresymtable
+
+--------------------------------------------------------------------------------------------------------------------
+
+dd命令
+作用：指定大小的拷贝一个文件，并在拷贝的同时可以进行一些转换，可以直接拷贝物理卷！
+
+linux存储的模式一共分为5层：
+1.应用程序
+2.虚拟文件系统
+3.文件系统
+4.设备驱动
+5.物理卷
+
+命令使用实例：
+1.备份mbr（系统分区表）
+# dd if=/dev/sda of=/backup/mbr.backup  bs=1  count=512		备份
+# dd if=/dev/zero of=/dev/sda bs=1 count=512			删除
+删除后使用df -h命令会发现看不到分区了！
+# dd if=/backup/mbr.backup of=/dev/sda
+
+2.备份整个硬盘
+# dd if=/dev/sda of=/dev/sdb		将sda这个磁盘备份到sdb磁盘
+恢复：
+# dd if=/dev/sdb of=/dev/sda
+将数据备份成一个文件的形式保存！
+# dd if=/dev/sda of=/backup/sda.backup		将sda磁盘的数据备份成一个文件
+恢复：
+# dd if=/backup/sda.backup of=/dev/sda
+
+3.从光驱（cdrom）中拷贝镜像文件！
+# dd if=/dev/cdrom  of=/xxx.iso
+
+4.从内存（swap/RAM）中拷贝资料到硬盘！
+# dd if=/dev/mem of=/backup/mem.bin
+
+5.销毁磁盘数据！
+# dd if=/dev/urandom of=/dev/sda		--随机数填充磁盘
+
+6.修复硬盘，当硬盘长时间未使用时使用！
+# dd if=/dev/sda of=/dev/sda
+
+稀疏文件
+稀疏文件是UNIX类和NTFS等文件系统的一个特性。
+普通文件的特征是，登记文件信息后，系统会立即分配文件需要的存储空间。比如一个100G的文件，创建后会立即占用100G的磁盘空间。
+而稀疏文件相对于普通文件的最明显的一个特征就是支持只登记文件信息，而不占用存储空间。比如创建一个100G的稀疏文件后，它本身可以只占用很小的文件头空间，并不立即占用所有100G存储空间，只在以后需要写入特定的文件块的时候，才分配相应的文件块空间，也就是说，其实际占用的空间是按需要逐渐增加的。
+稀疏文件的这种特征适用于磁盘图像，数据库快照，日志文件，大型文件下载等需要增量扩大容量的文件。比如磁盘剩余空间只有90G，用电驴下载100G的文件就可以采用稀疏文件方式，先开始下载，然后逐渐清理出空间给下载的文件使用。
+
+使用命令产生一个稀疏文件：
+# dd if=/dev/zero of =test bs=1M count=1 seek=40000000
+# ll test -h 
+
+# du -s test
+
+
+# dd if=/dev/zero of=test1 bs=1M count=1 seek=17000000
+dd: failed to truncate to 17825792000000 bytes in output file `test1': File too large
+在ext4下，单个文件最大大小为16T,再大的话就会报错
+单个文件16T是在ext4文件系统默认的block size=4096的情况下，如果块大小为1024，那么单个文件最大大小为4T
+如果要改块大小，在格式化时用-b参数
+# mkfs.ext4 -b 1024 /dev/sda8
+
+如何查看文件系统块大小？
+# dumpe2fs /dev/sda8 |grep "Block size:"		查看sda8的块大小
+dumpe2fs 1.41.12 (17-May-2010)
+Block size:               1024
+

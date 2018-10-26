@@ -1,0 +1,455 @@
+用户和组的管理：
+
+用户管理：
+
+用户管理相关的配置文件
+	/etc/passwd			--存放用户信息
+	/etc/shadow			--存放用户密码
+	/etc/group			--存放组信息
+	/etc/gshadow			--存放组密码
+# cat /etc/passwd
+root:x:0:0:root:/root:/bin/bash
+
+第一列：用户名	
+第二列：密码	老版本密码直接放在这里，为了安全考虑，现在的放到了/etc/shadow文件里面了，这里的 x 表示该用户启用了密码，如果把这个 x 删除掉，开机后使用此用户登录将不会再有密码了
+第三列：uid	用户识别ID，系统就是通过这个ID号来确认是哪个用户
+第四列：gid	组识别ID
+第五列：描述项	
+第六列：家目录	该用户的家目录
+第七列：bash	当前用户使用的shell
+	/bin/bash	 表示此用户使用bash,用户可以登录系统，可以收邮件，可以登录FTP(只要是有效的shell都可以)
+	/sbin/nologin  表示用户不能登录系统，可以收邮件，可以登录FTP
+	/bin/false	   表示用户不能登录系统，可以收邮件，不能登录FTP
+
+# cat /etc/shells 	查看该系统都支持哪些shell
+/bin/sh
+/bin/bash
+/sbin/nologin
+/bin/dash
+/bin/tcsh
+/bin/csh
+
+UID分配：
+管理员账号	root 	uid=0
+系统账号		uid=1-499
+普通用户账号	uid=500-65535（2.6以上的内核版本支持的uid数量为2^32-1个）
+
+
+
+如何查看当前用户的用户id和组id呢？
+
+id 命令		查看用户信息和组信息
+
+# id		查看当前用户的用户信息和组信息
+uid=0(root) gid=0(root) 组=0(root)
+
+# id user1 	查看user1这个用户的用户信息和组信息
+
+
+
+用户的切换：
+su 命令		切换用户
+su = switch user
+
+su user5   非完全切换	继承上一个用户的环境变量
+su - user5 完全切换	不继承上一个用户的环境变量
+
+# su user1		从root用户切换到普通用户user1不需要密码
+# su		不加任何选项表示切换到root用户，需要密码
+
+小实验：
+1,去掉/etc/passwd里root用户第二列的x,确认登录系统不需要密码，加回x，密码不变
+
+2,useradd abc增加一个abc用户，passwd abc修改一个登录密码，把uid改为0,使用abc登录，会发现你其实登录的是root管理员
+
+3，把abc用户的/bin/bash分别改成/sbin/nologin,/bin/false，然后使用su - abc来测试，发现都登录不了
+
+--------------------------------------------------------------------------------------------
+用户密码配置文件分析：
+# vim /etc/shadow
+root:$1$.1RfCu/n$ModWntxLJRC6SpgAXSDO81:14694:0:99999:7:::
+与/etc/passwd相对应 （但这里有九列）
+第一列：用户名
+第二列：密码   （这里以*号开头或！开头默认是不能登陆的），加密过后的密码，使用crypt加密
+第三列：上一次修改密码的时间      linux以1970年1月1日到现在的天数来算的
+第四列：修改密码后几天内不允许再修改	如果这里为5，那改过密码后5天内不能再修改 0代表不限制(只对普通用户有效)
+第五列：多少天内必须要求你改	99999代表不限制 
+第六列：过期前几天给你一个告警信息
+第七列：密码过期后还给的一个宽限天数
+第八列： 这里可以写一个过期天数    这里也是以1970年1月1日到现在的天数来计算的，多用于收费系统
+第九列： 保留，留着以后功能扩展
+
+用户管理相关命令：
+
+用户相关的命令
+useradd			--增加用户，add
+usermod			--修改用户，modify
+userdel			--删除用户，delete
+passwd			--修改密码，password
+
+
+
+useradd  增加一个普通用户
+
+命令选项：
+-c 	comment 指定一段注释性描述。
+-d 	指定用户家目录，如果此目录不存在，则同时使用-m选项，能创建主目录
+-g 	指定用户所属的用户组。
+-G 	指定用户所属的附加组。
+-s 	Shell文件 指定用户的登录Shell。
+-u 	指定用户的用户UID号，如果同时有-o选项，则能重复使用其他用户的UID号
+-p	这个命令是需求提供md5码的加密口令，普通数字是不行的。
+
+例如：
+# useradd -d /usr/sam -m sam
+ 此命令创建了一个用户sam，其中-d和-m选项用来为登录名sam产生一个主目录/usr/sam
+
+# useradd -s /bin/sh -g group -G adm,root gem
+ 此命令新建了一个用户gem，该用户的登录Shell是/bin/sh，他属于group用户组，同时又属于adm和root用户组，其中group用户组是其主组。
+
+
+# echo $[2**32-2]		查看该系统到底支持多少个用户！
+4294967294
+
+# useradd -u 4294967295 user2	  --不成功，报错
+# useradd -u 4294967294 user2	  --成功,这个数就是linux目前版本支持的最大uid数
+
+usermod 修改一个用户信息，参数基本与useradd相同
+
+命令选项：
+-l	用户重命名
+例如：
+# usermod -l user2 user1	--将之前的用户user1改名为user2
+
+
+# id user2
+uid=4294967294(user2) gid=502(user2) groups=502(user2)
+
+# usermod -u 502 user2	--将用户user2的uid号改为502
+
+# id user2
+uid=502(user2) gid=502(user2) groups=502(user2)
+
+创建一个用户时，系统做了2件事：
+1.home directory	创建用户家目录
+2.mail		创建用户邮件目录
+
+# ls /home/	
+# ls /var/mail/
+
+userdel 删除一个用户
+	-r 参数  连同家目录与邮件目录全删除
+
+# userdel -r user2
+
+
+passwd 命令	 修改用户密码
+
+普通用户修改密码和管理员有些不同：
+
+直接# passwd  修改当前用户密码
+如果要修改其他用户密码需要在passwd后面接上需要修改的用户名
+
+如：
+# passwd user1		--root用户修改user1的密码，密码的长度没有限制
+Changing password for user user1.
+New password: 
+BAD PASSWORD: it is WAY too short
+BAD PASSWORD: is too simple
+Retype new password: 
+passwd: all authentication tokens updated successfully.
+
+$ passwd					--普通用户修改密码
+Changing password for user user1.
+Changing password for user1.
+(current) UNIX password: 
+New password: 
+
+$ passwd user1
+passwd: Only root can specify a user name.
+
+组管理
+vim /etc/group		--组管理配置文件
+bin:x:1:root,bin,daemon
+
+第一列：组名
+第二列：与/etc/passwd第二列一样
+第三列：gid
+第四列：组成员
+
+cat /etc/gshadow		组密码相关文件，一般不会用到的所以就不再讲
+bin:::root,bin,daemon
+
+组管理的相关命令：
+
+groupadd			--增加新组
+选项：
+-g   GID 指定新用户组的组标识号（GID）。
+-o   一般和-g选项同时使用，表示新用户组的GID能和系统已有用户组的GID相同。
+例如：
+# groupadd group1
+ 此命令向系统中增加了一个新组group1
+
+# groupadd -g 101 group2
+ 此命令向系统中增加了一个新组group2，同时指定新组的组ID号是101，如果想两个组同时使用一个GID号就需要在加上 -o 选项
+
+groupdel			--删除组
+例如：
+# groupdel group1
+ 此命令从系统中删除组group1。
+
+
+groupmod		--修改组信息，不是修改组成员
+选项：
+-g 	GID 为用户组指定新的组标识号。
+ -o 	和-g选项同时使用，用户组的新GID能和系统已有用户组的GID相同。
+ -n 	将用户组重命名
+例如：
+# groupmod -g 102 group2
+ 此命令将组group2的组标识号修改为102
+
+# groupmod -g 10000 -n group3 group2
+ 此命令将组group2的标识号改为10000，组名修改为group3
+
+如果一个用户同时属于多个用户组，那么用户能在用户组之间转换，以便具有其他用户组的权限。用户能在登录后，使用命令newgrp转换到其他用户组，这个命令的参数就是目的用户组。
+
+$ newgrp root
+ 这条命令将当前用户转换到root用户组，前提条件是root用户组确实是该用户的主组或附加组。
+用户必须有且只能有一个主组，可以有0个、1个或多个附属组，就如我们一定会有一个用来安家的房子（类同主组），还可以有n个用于投资或其他打算的房子（附属组）。
+
+--关于有效组和初始组的讨论
+
+# id user5
+uid=505(user5) gid=506(user5) groups=506(user5),503(group1),505(group2)
+
+gid＝那个组就是你的初始组
+# su - user5
+$ groups 			--user5用户用此命令查看 靠前的是有效组
+user5 group1 group2
+
+--那么此用户现在创建目录或者文件的属组为 有效组user5
+
+newgrp 命令		临时修改当前用户的所属组（有效组）（这个当前用户指的是现在登录的用户，如果需要临时修改其他用户的需要先切换到该用户才行）
+
+命令格式：
+# newgrp [需要临时加入的组名称]
+例如：
+# groups 		先查看一下当前用户都拥有哪些组
+# newgrp group1		将当前用户临时加入group1这个组
+# groups		在查看一下当前用户拥有的组 
+
+
+
+gpasswd 命令		添加组密码
+
+命令格式：
+# gpasswd [组名称]	如果不加组名称，默认为修改或添加当前用户所在组的密码
+
+选项：
+-a：添加用户到组； 	# gpasswd -a abc group1	将用户abc添加到group1组里
+-d：从组删除用户； 	# gpasswd -d abc group1 将用户abc从group1组里删除
+-A：指定组管理员； 	# gpasswd -A abc group1	将用户abc指定为group1的组管理员，指定管理员后普通用户也可以对该组进行密码修改等操作
+-M：指定组成员；	# gpasswd -M abc group1	将用户abc指定为group1的组成员，和添加用户到组一样的作用
+-r：删除组密码；	# gpasswd -r group1	删除group1这个组的组密码
+-R：限制用户登入组	# gpasswd -R group1	只有组中的成员才可以用newgrp临时切换到该组（设想一下，当我们限制其它用户以后还有没有其他办法使其他用户临时切换这个组为有效组呢？）
+
+
+
+用户间切换命令：
+
+su 命令		用户切换
+
+
+命令格式：
+# su  [选项]  用户名
+
+选项：
+-		完全切换
+
+例如：
+# su abc	切换到abc用户
+# su		后面不接任何选项和用户名，直接切换回root用户
+# su - abc 	完全切换，不继承上一个用户的环境变量
+# su abc	非完全切换，继承上一个用户的环境变量
+
+
+修改文件所属组命令：
+
+命令格式：
+# chgrp [-R] 组名 文件名
+
+# chgrp group1 123.txt		将文件123.txt的所属组修改为group1
+
+其中-R为递归设置
+
+# chgrp -R abc /test/		将目录/test及其目录下所有内容的所属组修改为group1，因为目录内可能还包含其他内容，所以需要用到递归的形式来设置，否则只是将目录/test本身的所属组修改了，而目录下的文件或子目录并没有修改到
+
+
+修改文件的所有者和组命令：
+命令格式：
+# chown [-R] 用户[:用户组] 文件名
+
+# chown user1:group1 123.txt	将文件123.txt的所有者和所属组分别修改为user1和group1
+# chown user1:group1 /test/	将目录/test及其目录下所有内容的所有者和所属组分别修改为user1和group
+
+练习题：
+	建立a,b,c三个用户
+	要求，
+	1,a只属于b,c组，并且默认创建的文件的属组为c(表示gid为c)
+	2,b属于a,b组,并且默认创建的文件的属组为b
+	3,c属于a,b,c组,并且默认创建的文件的属组为a
+
+
+						文件的特殊权限位（s,t)
+
+1. s位又叫特权位
+
+	特权位 s     
+	一个可执行文件拥有s位时，当别的用户来执行这个可执行文件的话，使用的权限是此可执行文件属主或者属组的权限 
+
+	只针对前三位，中间三位
+	对目录可以加，但是无效，因为目录不是命令，根本不能执行它
+
+	# ll /usr/bin/passwd
+	-rwsr-xr-x. 1 root root 30768 Feb 17  2012 /usr/bin/passwd
+	# ll /etc/shadow
+	----------. 1 root root 1434 Jul 17 09:27 /etc/shadow
+
+
+	--普通用户修改密码使用passwd能改自己的密码，但是密码是存放在/etc/shadow里，也就是说普通用户对/etc/shadow没有写的权限，但passwd可执行文件的前三位有s位，所以普通在调用passswd时是用的root的权限 
+	
+	# chmod u+s 1.txt		在用户的权限位置上加入s位
+	# chmod g+s 1.txt		在组的权限位置上加入s位
+	# chmod +s 1.txt		在用户和组权限位置都加入s位
+	# chmod -s 1.txt		取消用户和组权限位置的s位
+	
+
+	小实验:
+	<1>,测试passwd命令的s位，去掉其s位，普通用户就不能自己改自己密码了，加上s位就可以了
+	# chmod 777 /usr/bin/passwd		去掉s位
+	
+	切换到普通用户在使用passwd命令修改命令试一下看能不能成功
+
+	# chmod 4755 /usr/bin/passwd		添加s位
+
+	<2>，/bin/touch这个命令是没有s位的，你可以尝试加上s位，然后用普通用户touch文件，观察效果。做完测试后，记得改回来也就是把s位去掉
+
+	# chmod 4755  /bin/touch		给touch命令添加一个s位
+	# touch	123.txt		
+	# chmod 755 /bin/touch			去掉touch命令的s位
+	# touch 234.txt
+	# ll 					看一下刚创建的123.txt和234.txt两个文件的不同之处
+	-rw-rw-r-- 1 root abc 0 9月  29 22:19 123.txt
+	-rw-rw-r-- 1 abc  abc 0 9月  29 22:21 234.txt
+		
+	<3>，普通用户能关机吗？怎么让普通用户关机
+
+	可以对关机命令加s位来让普通用户能关机，在rhel6.5下测试shutdown也不可以这样做,halt,init不能这样做
+	这只是一个理论讨论，实际情况不会这么做的
+	
+	# shutdown -h now		
+	shutdown: Need to be root	（关闭：需要root用户）普通用户不管怎么样都是不能使用关机命令的，
+
+2. 粘贴位t	--只针对目录有效
+
+	特别用在/tmp目录 
+
+	有t位的目录，任何用户在有权限的情况下是可以创建文件和目录，就算是有权限删除别人的文件或目录也不能删除
+	自己只能删除自己创建的目录，用于一些共享上传的文件服务器场合
+	会提示Operation not permitted	--这是操作不允许，不是pemission denied   
+
+	s位和t位注意的地方：
+
+	用数字表示
+
+	前三位上加s    		4
+	中间三位加s		2
+	后三位加t		1
+	
+	
+	# chmod 1777 /tmp	为/tmp目录加入t权限
+	# chmod 777 /tmp	为/tmp目录取消t权限
+	也可以写成：
+	# chmod -t /tmp
+	# chmod +t /tmp	
+   
+	t权限位是无法指定到其它地方的，只能加在其它用户权限位置的最后一位
+	
+特别注意：s位和t位大小写的区别  小写的话就表示有x执行权限  大写的话就表示没有x执行权限  
+
+3. 隐藏属性
+
+	lsattr				--查看隐藏属性
+	chattr				--修改隐藏属性
+
+	# lsattr 1.txt		查看1.txt文件的隐藏属性
+	-------------e- 1.txt
+
+	# chattr +A 1.txt	（为1.txt文件添加一个A隐藏属性）--这个属性让文件的access time访问后也不会变化，节省了IO（IO优化)；默认情况下rhel5，访问一次atime就会跟着变一次，rhel6下只有当atime等于或早于mtime和ctime之一时，才会访问跟着变，否则不会变。（原因我们在后面讲mount参数时再补充)
+
+	# lsattr 1.txt
+	-------A-----e- 1.txt	
+
+	# stat 1.txt |tail -3		--用cat命令访问这个文件，再用此命令查看access time，会发现不再变化
+	Access: 2014-07-17 11:12:58.589838878 +0800
+	Modify: 2014-07-17 11:12:58.589838878 +0800
+	Change: 2014-07-17 11:13:15.405701371 +0800
+
+	# chattr +a 1.txt
+
+	一个文件加了a属性，重定向覆盖以前的内容不允许，也不可修改和删除，不可重命名，不可硬链接，可以软链接，但追加内容是可以的
+	# lsattr 1.txt
+	-----a-------e- 1.txt
+
+	# echo 456 > 1.txt
+	bash: 1.txt: Operation not permitted（操作不允许）
+	# echo 456 >> 1.txt（回车后没有任何反馈，用cat命令查看一下，内容已经追加进去了）		
+	
+	# chattr -a 1.txt
+	# chattr +i 1.txt  --加了i属性，此文件不可被修改，不可重命名，不可删除，不可做硬链接，可以软链接，只可以看内容
+	普通用户使用隐藏属性，可以添加A位，不能添加a和i位，也不能删除a和i位
+
+
+
+
+
+作业：
+
+1.创建一个普通用户，为其指定一个uid号，uid号为自己的qq号（别说位数太多，我算过的）
+2.创建一个组，组名称以自己名字拼音命名，并为该组添加一个组密码
+3.再次创建一个普通用户，uid不限，将该用户指定到刚刚创建的组里面
+4.将刚创建的用户有效组（所属组）临时切换为第二题中创建的组
+5.将创建的组设置为限制除组成员外都无法切换到该组
+-------------------------------------------------------------------------------------
+6.将/bin/mkdir文件设置一个特权位 s ，然后在使用mkdir命令创建一个目录，找出与没有加特权位 s 时的区别
+7.在根目录下创建一个目录，为其设置一个粘贴位 t ，并描述出粘贴位 t 的作用
+8.创建一个普通文件，将其设置为不可修改和删除，不可重命名，不可硬链接，可以软链接，但是可以追加内容（提示：查阅隐藏属性笔记）
+9.创建一个普通文件，将其设置为只可以看内容（提示：查阅隐藏属性笔记）
+10.将第10题中为/bin/mkdir文件设置的特权位 s 去掉
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

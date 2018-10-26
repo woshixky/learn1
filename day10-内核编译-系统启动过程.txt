@@ -1,0 +1,346 @@
+模块管理(module)
+
+	# ls /usr/src/kernels/`uname -r`/	--内核源码路径
+	# ls /usr/src/kernels/2.6.32-279.el6.x86_64/
+	--建议不要删除内核源码，因为有些软件在编译安装要使用到内核源码。
+
+	linux = boot + kernel + fs
+
+	# ls /lib/modules/`uname -r`/kernel	--模块（可以看作是驱动）
+	arch  crypto  drivers  fs  kernel  lib  mm  net  sound
+
+	arch/       crypto/  drivers/      fs/      lib/      net/       sound/ 
+	架构平台   加密有关  驱动有关  文件系统     库        网络        声音
+
+	--也就是说由内核源码编译出来的模块被分类放在上面的目录
+
+	# lsmod		--查看装载的模块
+	# modinfo cdrom	--查看特定模块信息
+	filename:       /lib/modules/2.6.32-431.el6.x86_64/kernel/drivers/cdrom/cdrom.ko
+	license:        GPL
+	srcversion:     6C1B1032B5BB33E30110371
+	depends:        
+	vermagic:       2.6.32-431.el6.x86_64 SMP mod_unload modversions 
+	parm:           debug:bool
+	parm:           autoclose:bool
+	parm:           autoeject:bool
+	parm:           lockdoor:bool
+	parm:           check_media_type:bool
+	parm:           mrw_format_restart:bool
+
+	如何确认你的网卡模块叫什么名字？
+	# dmesg|grep eth
+	e1000 0000:02:01.0: eth0: (PCI:66MHz:32-bit) 00:0c:29:72:3e:33
+	e1000 0000:02:01.0: eth0: Intel(R) PRO/1000 Network Connection
+	e1000 0000:02:05.0: eth1: (PCI:66MHz:32-bit) 00:0c:29:72:3e:3d
+	e1000 0000:02:05.0: eth1: Intel(R) PRO/1000 Network Connection
+	e1000: eth0 NIC Link is Up 1000 Mbps Full Duplex, Flow Control: None
+	eth0: no IPv6 routers present
+
+
+	# rmmod  vmci		 	 --删除模块
+	# modprobe vmci		 	--装载模块，只写模块名
+	# insmod /lib/modules/2.6.32-279.el6.x86_64/misc/vmci.ko  --也是装载模块，但是要写绝对路径
+
+
+	例1，删除网卡模块，网络马上不可用，再加回去就可以使用了
+	# mii-tool eth0
+	eth0: negotiated 100baseTx-FD flow-control, link ok
+	# rmmod r8169
+	# mii-tool eth0
+	SIOCGMIIPHY on 'eth0' failed: No such device
+	# modprobe r8169
+
+ 内核编译
+
+	对内核源码的功能进行定制
+
+	www.kernel.org		--下载内核源代码
+
+
+	# ls /usr/src/kernels/`uname -r`   --当前使用系统的内核源码
+
+	什么情况下需要编译内核?
+	1.系统要支持一个功能，但内核默认不支持，又不想升级成新的系统，则需要内核编译
+	2.开发了一个模块，需要内核的支持，也需要编入内核
+
+
+	内核编译要考虑几点：
+		1.自己定制的内核运行更快，具有更少的代码
+		2.把不需要的功能编译进内核可能会有受到漏洞被利用的风险
+		3.将某种功能编译成模块方式比直接编译进内核速度要慢
+
+
+
+	# # ls /var/www/html/index.html/soft/kernel/linux-4.4.tar.xz	--目前最新版本的内核
+
+	# # tar xf /var/www/html/index.html/soft/kernel/linux-4.4.tar.xz -C /usr/src/kernels/
+
+	# # cd /usr/src/kernels/linux-4.4/
+
+	编译内核的步骤：
+	1，# make mrproper    	--消除当前内核源码，使之干净，（和编译软件时的make clean相似)
+	2，# make config	--基于文本的传统的配置界面，不推荐使用
+	   # make menuconfig	--基于ncurses-devel库的一种文本选单方式（要装ncurses-devel)
+	   # make oldconfig	--如果只想在原来的内核配置基础上修改的话，用此选项
+	   # make xconfig 	--基于x windows的图形配置界面，基于qt的（要装avahi-qt3-devel）
+	
+	   # make menuconfig 	--如果终端太小，会报错：It must be at least 19 lines by 80 columns.
+	
+			＊   代表编入内核
+			 M   代表编成模块 
+			空   代表不编入内核
+
+
+		有三种括号：  
+			方括号：要么是编进，要么是不编
+			尖括号：三种选择，编进，不编，编成模块 
+			圆括号： 多选一
+
+	--定制完你的内核选项，保存，会把所有的选择结果保存到.config这个文件，你可以vi打开它查看
+
+	3，# make			   --开始编译内核，过程相当漫长
+	4, # make modules_install    --把编译后的模块复制到/lib/modules/内核新版本/  以后就可以用modprobe insmod来装载使用
+	5，# make install  --拷贝vmlinuz,initramfs 到/boot/下  ，并自动修改grub 
+
+	上面的编译完成后，就可以reboot你的系统，然后在grub里选择新的内核进入系统进行验证
+
+	以前rhel5的iso还有下面这种rpm安装的内核
+
+	PAE   physical   address  extend  物理地址扩展   32位系统使用大于4G内存
+	# rpm -ivh  /share/yum/Server/kernel-PAE-2.6.18-164.el5.i686.rpm
+	xen  xen虚拟化使用的内核（半虚拟化需要修改内核) 
+	# rpm -ivh  /share/yum/Server/kernel-xen-2.6.18-164.el5.i686.rpm
+
+
+
+作业：
+
+1.写出安装一个以 .src.rpm 结尾的软件包的命令步骤
+
+2.写出编译一个源码包的安装步骤
+
+
+
+
+系统开机启动过程
+
+开机－－＞bios或EFI(配置主板的程序，BIOS=basic input and output system，EFI=Extensible Firmware Interface加电自检，找到启动设备的编号)－－>找到mbr（master bootloader record，它是属于硬盘的0磁盘0扇区，硬盘最前的512个节点）－－＞grub(双系统，选择其一启动)－－＞通过grub找到vmlinuz和initramfs(驱动硬件）－－＞ 内核启动，产生init进程－－＞/etc/inittab（确定系统的启动级别）－－＞/etc/rc.sysinit(获取主机的网络环境和主机类型，测试与载入设备，是否启动selinux，模块的加载，设置系统时间.....）－－>/etc/fstab－－>按照inittab里的级别来对应的启动/etc/rcX.d/里的服务－－＞/etc/rc.local－－>gdm系统登录
+
+
+	/etc/rc.local		--写上你在登录前要自动做的命令或脚本
+
+	mount /soft/rhel-server-6.3-x86_64-dvd.iso /yum/ -o loop
+
+
+	# ll /etc/rc5.d/S99local 		--这是一个软链接，如果这个软链接没了，则你写到/etc/rc.local里的命令也不会生效
+	lrwxrwxrwx. 1 root root 11 Jul 14 07:26 /etc/rc5.d/S99local -> ../rc.local
+
+	让开机后自动关机的方式有很多
+	1，inittab默认级别改为0
+	2，/etc/rc.local里加一句init 0
+	3，在一定要自启动的服务脚本里如/etc/init.d/network里加一句init 0
+	4, 在环境变量文件如/root/.bash_profile里加init 0
+	5, 在时间任务里定义一个时间init 0
+
+ grub
+	1. grub  就是一个boot loader程序
+
+	# rpm -qa |grep grub
+	grub-0.97-77.el6.x86_64
+
+
+	# rpm -qi grub-0.97-77.el6.x86_64
+
+	Summary     : Grand Unified Boot Loader.
+	Description :
+	GRUB (Grand Unified Boot Loader) is an experimental boot loader
+	capable of booting into most free operating systems - Linux, FreeBSD,
+	NetBSD, GNU Mach, and others as well as most commercial operating
+	systems.
+
+
+
+	# vim /boot/grub/grub.conf
+	--如果是使用了efi分区（/boot/efi)的话，路径则在# vim /boot/efi/EFI/redhat/grub.conf
+
+	default=0	--默认进第一个系统
+	timeout=5	--有5秒选择时间，这里可以写负数，指的是一直在等待，一定要用户选择
+	splashimage=(hd0,0)/grub/splash.xpm.gz	--指的是grub界面的图片,hd0是由/boot/grub/device.map来指定
+
+
+	title Red Hat Enterprise Linux (2.6.32-279.el6.x86_64)
+		    root (hd0,0)							--boot分区
+		    kernel /vmlinuz-2.6.32-279.el6.x86_64 ro root=/dev/sda3 rd_NO_LUKS rd_LVM_LV=vol0/root rd_NO_MD SYSFONT=latarcyrheb-sun16 crashkernel=auto  KEYBOARDTYPE=pc KEYTABLE=us biosdevname=0 rd_NO_DM LANG=en_US.UTF-8 rhgb quiet
+		    initrd /initramfs-2.6.32-279.el6.x86_64.img
+
+
+	rhgb表示redhat graphics boot，就是会看到图片来代替启动过程中显示的文本信息，这些信息在启动后用dmesg也可以看到
+
+	quiet表示在启动过程中只有重要信息显示，类似硬件自检的消息不会显示
+
+
+
+	问题1：假设现在的系统分区情况如下
+	/dev/sda1    /boot
+	/dev/sda2    swap
+	/dev/sda3    /
+
+	那么它的启动应该按下面的写法
+	title Red Hat Enterprise Linux (2.6.32-279.el6.x86_64)
+		    root (hd0,0)
+		    kernel /vmlinuz-2.6.32-279.el6.x86_64 ro root=/dev/sda3  rhgb quiet
+		    initrd /initramfs-2.6.32-279.el6.x86_64.img
+
+	如果分区情况如下
+	/dev/sda1	/
+	/dev/sda2	swap
+
+	请问我的grub.conf应该如何写
+
+	title Red Hat Enterprise Linux (2.6.32-279.el6.x86_64)
+		    root (hd0,0)
+		    kernel /boot/vmlinuz-2.6.32-279.el6.x86_64 ro root=/dev/sda1  rhgb quiet
+		    initrd /boot/initramfs-2.6.32-279.el6.x86_64.img
+
+
+
+	问题2:假设我现在的/etc/fstab文件如下
+	/dev/sda1	/boot	ext4	defaults	1 1
+	/dev/sda2	/	ext4	defaults	1 2
+	/dev/sda3	swap	swap	defaults	0 0
+	tmpfs           /dev/shm     tmpfs   defaults        0 0
+	devpts          /dev/pts     devpts  gid=5,mode=620  0 0
+	sysfs           /sys         sysfs   defaults        0 0
+	proc            /proc        proc    defaults        0 0
+	我如果删除了fstab里的第一行，请问重启系统会怎么样?
+
+
+	结果为:启动时grub不受影响，只是系统启动后/dev/sda1分区没有挂载到/boot目录而已.
+	原因是grub去找vmlinuz和initramfs不是去找/boot目录的，而是去找/dev/sda1的，所以fstab不管怎么改都不会影响grub(而且按启动顺序来讲,fstab在grub之后)
+
+
+
+	问题3:假设我现在同一个硬盘上装了两个linux（我们称为linux1和linux2）,分区情况如下:
+	/dev/sda1	/boot			--第一个系统boot分区
+	/dev/sda2	/			--第一个系统的根
+	/dev/sda3	swap
+	/dev/sda4	extended
+	/dev/sda5	/			--第二个系统的根，它没有分boot分区
+
+	两个linux到底用的是谁的grub?
+	在装第二个系统时有一步叫install boot loader on /dev/sda前打勾，那么它会覆盖第一个系统的grub，就会使用第二个系统的grub;如果没有打勾，那就是用的第一系统的grub
+
+	
+
+	如果使用第二个系统的grub，它里面是否能引导第一个系统呢?
+	如果第一系统是windows，第二个系统是linux，那么默认就可以引导windows
+	如果第一系统是linux，第二个系统也是linux，默认它没有第一个系统的引导记录，那么如何让它引导第一个系统?
+
+	结果就是你自己手动写上第一个系统的引导项就可以了
+	title linux01
+		root (hd0,0)
+		kernel /vmlinux-xxx ro root=/dev/sda2
+		initrd /initramfs-xxx
+	title linux02
+		root (hd0,4)
+		kernel /boot/vmlinux-xxx ro root=/dev/sda5
+		initrd /boot/initramfs-xxx
+
+
+	写上第一个系统的引导项后，我就可以引导进入第一个系统，同理也可以在第一个系统里再写上第二个系统的引导项，如果我现在想使用第一个系统的grub，又应该怎么做?
+
+	grub-install /dev/sda		--这表示把当前系统的grub配置安装到sda的mbr里去覆盖别的系统的grub
+
+	制作GRUB开机画面底图splash.xpm.gz
+	
+	(1)准备一幅图片，要求它的分辨率是640×480（因为grub只支持这个分辨率的图片），将图片格式转成xpm（因为grub只支持这个格式的图片），并且该xpm的图片色深必须是14，此要求用一个命令就可以完成：
+	
+
+	# yum install -y ImageMagick (因为要用到convert工具)
+
+	# convert -resize 640x480 -colors 14 123.jpg splash.xpm
+
+
+ 上面这句命令是将winner.png 转换成符合要求的图片splash.xpm
+	(2)我们可以这样检查图片是否符合grub的要求，用命令：
+
+	# more splash.xpm
+
+	在文件头部如果可以找到这些信息，则说明该图片可以被grub正常显示：
+
+	static char *10[] = { 
+
+	"640 480 14 1"，
+
+	(3) # gzip -9 splash.xpm
+
+	(4) 最后得到splash.xpm.gz，将其放到/boot/grub/路径下，替换掉原图片
+
+
+
+	2. grub加密码
+
+	给grub加密码 (防止别人在启动系统时修改grub进入1级别改你的root密码)
+	但是你有grub密码，别人还是可以通过rescue模式来进入你的系统)
+
+	# grub-md5-crypt 				--用此命令产生一个密码加密串
+	Password: 
+	Retype password: 	
+	$1$JWQIX/$tYXWeDn3HPj9LYZezTuTI/		--输两次密码就可以产生加密串
+
+	default=0
+	timeout=5
+	splashimage=(hd0,0)/grub/splash.xpm.gz		--在下面加上加密信息，建议加到第一个title的上面就可以了，因为它是锁这句话之后的代码
+	password --md5 $1$JWQIX/$tYXWeDn3HPj9LYZezTuTI/	
+
+	title Red Hat Enterprise Linux (2.6.32-279.el6.x86_64)
+		    root (hd0,0)
+		    kernel /vmlinuz-2.6.32-279.el6.x86_64 ro root=/dev/sda3 rd_NO_LUKS rd_LVM_LV=vol0/root rd_NO_MD SYSFONT=latarcyrheb-sun16 crashkernel=auto  KEYBOARDTYPE=pc KEYTABLE=us biosdevname=0 rd_NO_DM LANG=en_US.UTF-8 rhgb quiet	
+		    initrd /initramfs-2.6.32-279.el6.x86_64.img
+
+	3. grub排错
+	--grub排错引导例子：  注意:做下面实验不要使用lvm,lvm不支持下面这种做法
+	当grub丢失，或者 grub写的有错误时，进系统时会发现grub文件找不到或者直接到grub>的界面
+
+	grub>root (hd0,0)	--进到/boot分区  
+
+	grub>kernel /vmlinuz-xxxxxxx ro root=LABEL=/		--root分区不要写错，label形式或者/dev/sdax形式都可以
+
+	grub>initrd /initramfs-xxxxxxxx
+
+	grub>boot       --boot代表启动
+
+	进入系统后，再修改好grub，看需要再grub-install /dev/sda
+
+	4. 硬盘安装linux系统
+
+	# df -h
+	/dev/sda6              47G  4.0G   40G   9% /soft
+
+	准备下面这些东西，最好都放到一个专门的分区挂载目录，我这里是/dev/sda6
+	/soft/rhel-server-6.3-x86_64-dvd.iso
+	/soft/isolinux/
+	/soft/images/
+	/soft/vmlinuz
+	/soft/initrd.img
+
+	重启你的操作系统，在grub界面按C键
+	grub > root (hd0,5)
+	grub > kernel /vmlinuz
+	grub > initrd /initrd.img
+	grub > boot
+
+就会进入装系统的界面，和以前装系统的过程几乎一样，只有一个地方不一样就是有一步它会问你你的安装方式,你选择hard drive,然后再会问你iso的路径，你选择/dev/sda6就可以了
+
+
+
+
+
+
+
+
+
+
+
+

@@ -1,0 +1,216 @@
+一.nfs	network file system.的缩写
+一种集群式文件系统，不同单机文件系统（如fat32,ntfs,ext2,ext3,ext4等)
+
+nfs现在就是做linux to linux间的文件共享！
+
+作用：
+将一台机器上的某个磁盘共享出去，让其它机器可以挂载使用！
+
+安装nfs:
+必要软件：nfs-utils  ortmap
+查询当前系统是否安装： 
+# rpm -qa nfs*&&rpm -qa portmap
+nfs-utils-lib-1.0.8-7.6.el5
+nfs-utils-1.0.9-42.el5
+portmap-4.0-65.2.2.1
+
+如果显示结果为空  则直接 ：
+# yum  install portmap -y   
+# yum  install nfs* -y
+
+
+启动及开机自启动nfs服务命令：
+# /etc/init.d/rpcbind   start		--在nfs共享时候负责通知客户端，服务器的nfs端口号的
+# /etc/init.d/nfs  start
+# chkconfig rpcbind on
+# chkconfig nfs on
+
+
+配置nfs（服务端）
+# vim /etc/exports 
+/test    *(ro)		--所有ip都能挂载使用
+	
+/test    10.0.0.0/24(ro)	--只有10.0.0.0/24这个网段的ip可以挂载使用
+
+/test    10.0.0.11(ro)  10.0.0.12(rw)	--只有10.0.0.11和10.0.0.12可以挂载使用，且10.0.0.12挂载后的权限为可读可写
+
+修改配置文件后需要重启nfs服务或使用命令：# exportfs -arv 重新加载配置文件
+
+--更多写法,man exports去查看
+挂载远程nfs共享目录（客户端）
+# /etc/init.d/nfs restart
+# showmount -e 10.0.0.2
+# mount 10.0.0.2:/test /mnt	--客户端要访问nfs，就是远程挂载过来
+
+
+如果有人挂载不上的，请执行以下命令清空防火墙规则：
+# iptables -F		--需要把防火墙规则给清除；这样做是临时清除	
+# chkconfig iptables off
+# setup			--使用此命令图形配置，把firewall前的*去掉，确认保存
+
+------------------------------------------我是华丽的分割线---------------------------------------
+
+autofs 自动挂载 （这个与U盘的自动挂载没有关系
+安装命令：
+# yum install -y autofs
+
+对于nfs的远程挂载，下面命令经常要做，有什么方法可以简化此操作
+# mount 10.0.0.2:/share/soft /share
+1,/etc/fstab		
+2,/etc/rc.local
+3,做别名
+4.autofs
+
+--上面四种方式，前两种不建议用，因为nfs的挂载有个问题，你做了开机自动挂载我的nfs共享，如果我关机了，而你没有去umount我的挂载，那么你的挂载目录会卡死（造成df -h等命令都用不了),这里建议用第四种
+
+# vim /etc/auto.master
+/misc   /etc/auto.misc
+
+# vim /etc/auto.misc
+cd              -fstype=iso9660,ro,nosuid,nodev :/dev/cdrom
+
+--上面的意思表示/dev/cdrom(光驱)会以iso9660,ro,nosuid,nodev参数自动挂载到/misc/cd目录
+
+--测试，用虚拟机来测试
+# /etc/init.d/autofs restart
+
+然后
+# ls /misc   	--为空
+# ls /misc/cd   	--看到就是iso的内容，表示自动挂载了
+# ls /misc    	--过五分钟左右，你不使用它，这个cd目录会消失
+
+如何实现自动挂载nfs服务器共享出来的目录呢？
+# vim /etc/auto.master
+/mnt    /etc/auto.nfs		# 在文件最后方添加该行
+
+在另一个配置文件里面添加如下内容：
+# vim /etc/auto.nfs		--该文件需要手动创建
+nfs   -rw   192.168.0.109:/yum	# 表示将nfs共享目录挂载到当前系统的/mnt/nfs目录中
+
+nfs表示要挂载的目录
+配置好后重启服务：
+# /etc/rc.d/init.d/autofs restart
+Stopping automount:                                        [  OK  ]
+Starting automount:                                        [  OK  ]
+
+# ls /mnt
+没有任何内容
+# ls /mnt/nfs
+有内容则表示已经挂载成功了，五分钟后系统将自动取消挂载
+
+---------------------------------------------------------------------------
+—————————————————————————————————————————————————————————————————————————————————
+以下是autofs常用的几个服务挂载配置格式：			     	 					|
+																				|
+挂载samba的配置:							 									|
+backup      -fstype=cifs,username=smbuser1%asdf     ://192.168.1.99/pub			|
+																				|
+挂载iso的配置:																	|
+iso       -loop,fstype=iso9660,ro       :/root/rhel-server-6.0-x86_64-boot.iso	|
+																				|
+挂载nfs的配置:							 										|
+nfs        -fstype=nfs            192.168.1.99:/test_nfs				 		|
+________________________________________________________________________________|
+
+练习：
+1.将自己作为软件仓库的那个目录使用nfs服务共享出来，要求其他人挂载该目录后拥有可读可写权限
+2.将自己共享出来的目录做成自动挂载，要求挂载后拥有可读可写权限
+
+
+
+---------------------------------我是华丽的分割线------------------------------------------------
+
+
+dhcp服务
+	dhcp = dynamic host configuration protocol 动态主机配置协议
+
+
+	可以动态分配IP，网关，DNS指向，主机名（需要DNS支持，也只能简单分配，不能做主机名绑定，所以实际生产环境也不建议这么做，以后可以使用象puppet这种软件来实现）
+
+
+	哪些方式可以指定客户端使用dhcp来获取IP?
+	方法一：
+	/etc/sysconfig/network-scripts/ifcfg-eth0这个配置里指定IP获取方式为dhcp，然后/etc/init.d/network restart重启网络就可以
+	方法二：
+	# dhclient eth0	 --使用这个命令指定eth0网卡用dhcp获取IP（但这个命令只能用一次，用第二次需要kill掉上一次的进程）
+
+
+	dhcp原理
+	客户端在局域网广播发dhcp discover广播包 
+	收到广播包的dhcp服务端回dhcp offer包
+	客户端收到offer包后，再发dhcp request广播包
+	服务端回dhcp ack包
+	  
+
+
+
+	实验，使用宿主机模拟dhcp服务器，虚拟机模拟客户端，但是不要用bridge网络；建议使用hostonly网络（防止同一个网络内多个dhcp冲突)
+
+
+
+	第一步：
+	虚拟机（dhcp客户端)指定网卡连接vmnet1网络（并可以通过vmware-netcfg命令，把vmware自带的dhcp关闭）；
+	然后配置网卡通过dhcp获取IP；使用/etc/init.d/network restart或者 dhclient eth0命令来动态获取IP；
+	结果是获取不成功（因为vmware自带的dhcp关闭，自己要配置的dhcp服务器还没有开始配置）
+
+
+
+	第二步:
+	在宿主机(dhcp服务器端)先确认vmnet1网卡的地址和网段（我这里是192.168.62.1)
+
+
+	# yum install dhcp* -y
+
+
+	# vim /etc/dhcp/dhcpd.conf
+
+	然后配置下面一段，并启动服务
+
+	# rm -f /etc/dhcp/dhcpd.conf
+	# vim /etc/dhcp/dhcpd.conf
+
+	subnet 1.1.1.0 netmask 255.255.255.0 {
+        range 1.1.1.10 1.1.1.20;
+        option domain-name-servers 8.8.8.8;
+        option routers 1.1.1.1;
+        option broadcast-address 1.1.1.255;
+        default-lease-time 600;
+        max-lease-time 7200;
+        log-facility local7;
+	}
+
+	subnet 2.2.2.0 netmask 255.255.255.0 {				--网段和掩码
+		range 2.2.2.100 2.2.2.200;						--地址池
+		option domain-name-servers 114.114.114.114;		--dns
+		option routers 2.2.2.1;							--网关或路由
+		option broadcast-address 2.2.2.255;				--广播地址
+		default-lease-time 600;							--默认组约
+        max-lease-time 7200;							--最大组约
+        log-facility local7;							--日志级别
+	}
+
+
+	# /etc/init.d/dhcpd restart
+
+	第三步：
+	再次回到虚拟机(dhcp客户端）使用/etc/init.d/network restart或者 dhclient eth0命令来动态获取IP；
+	这次就可以成功了
+
+	第四步：
+	验证
+	1，客户端上ifconfig 查看IP是否获取的是服务器指定的范围
+	2，客户端cat /etc/resolv.conf和route -n查看是否成功获取DNS指向和网关
+	3，客户端cat /var/lib/dhclient/dhclient-eth0.leases或者cat /var/log/messages |grep dhcp查看相关信息
+	4，服务端cat /var/lib/dhcpd/dhcpd.leases查看分配情况
+
+
+	在配置里加上下面一段，指定客户端MAC地址为00:0c:29:f4:4c:de的会获取IP为192.168.62.77
+	host vmware {		--这个名字随意，有主机名就写主机名
+	  hardware ethernet 00:0c:29:df:da:d4;
+	  fixed-address 2.2.2.188;
+	}
+
+	然后服务端/etc/init.d/dhcpd restart重启服务，客户端重新获取验证
+
+
+

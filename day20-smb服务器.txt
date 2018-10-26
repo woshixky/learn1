@@ -1,0 +1,704 @@
+samba		--文件服务器 (公共使用的网络目录，供大家上传，下载，并做精细的权限控制）
+
+smb与ftp对比:
+1,smb不能直接跨公网，要借助类似vpn（virtual private network)这种方式
+2,smb对权限控制比ftp好，特别适用于在同一个目录里多个用户拥有不同权限的场合
+3,smb和ftp都能跨平台.(如果linux做服务器，windows做客户端，ftp不太适合电脑初级者使用，因为需要使用软件。而smb适合电脑初级都使用，我们可以帮他做服务器的磁盘映射，只要使用都会基本电脑操作就可以轻松实现上传下载）
+
+nfs:   linux to linux
+samba:  linux to windows 或linux to linux
+
+samba通过两个守护进程来控制
+
+nmbd	用来管理workgroup,netbios name的解析等          用udp 的137，138端口
+
+smbd	用来管理samba主机分享的目录，档案		用tcp的139和445  （TCP的可靠性）
+
+rhel6下监听端口只有TCP的139,445
+
+--windows防火墙关闭
+--guest用户打开
+
+
+
+smb服务的特点：
+1，能够支持更详细的访问控制
+2，能够跨平台（linux和windows）共享文件
+
+
+
+# yum install samba*  	安装
+
+
+# rpm -qa |grep samba
+samba-winbind-3.5.10-125.el6.x86_64
+samba-common-3.5.10-125.el6.x86_64
+samba-winbind-clients-3.5.10-125.el6.x86_64
+samba-client-3.5.10-125.el6.x86_64
+samba-3.5.10-125.el6.x86_64
+
+--这里如果你是rhel6.4以上的版本，用上面的yum install samba*安装会报冲突的错误（因为6.4版的iso里自带了两个版本的samba)，解决方法yum install samba-*
+
+smb的主配置文件路径：
+# vim /etc/samba/smb.conf
+
+[global]							--定义服务器全局的参数
+        workgroup = MYGROUP					--定义服务器的工作组
+        server string = Samba Server Version %v  		--定义服务器的描述
+        security = user	  					--定义工作模式：share,user,server
+        passdb backend = tdbsam  				--使用本地的.tdb文件保存账号密码
+        load printers = yes					--是否加载打印机
+        cups options = raw					--打印机类型
+
+[homes]								--共享的资源名（相当于一个模块也是一个路径别名）
+        comment = Home Directories
+        browseable = no
+        writable = yes
+[printers]							--共享的资源名
+        comment = All Printers
+        path = /var/spool/samba
+        browseable = no
+        guest ok = no
+        writable = no
+        printable = yes
+
+
+上面的参数你只需要重点关注下面这几个
+[global]
+	security = user
+[homes]
+	comment = Home Directories
+	browseable = no
+	writable = yes
+
+
+
+security =
+share 		不用密码，包括匿名用户(匿名用户模式）
+user		使用samba自己的密码资料库（普通用户模式）
+server     	使用外部主机的密码（用户信息存放在远程服务器的模式）
+
+共享目录有关的参数
+
+browseable  	匿名用户是否可见
+public    	是否让所有可以登入的使用者看到，匿名用户是否可以登录
+guest ok   	和public一样，使用其中之一就可以
+writable   	是否可写 (read only  是否只读)
+create  mode   	umask类似
+valid users   	指定能够进入的使用者
+write list  	写列表  read list (也是表示写列表，但与write list相反)
+
+上面有三对参数相同或相反（public和guest ok，writable和read only，write list和read list)
+ 
+# /etc/init.d/smb restart	启动服务
+
+# netstat -ntlup |grep bd	查看端口监听情况
+tcp        0      0 :::139                      :::*                        LISTEN      4507/smbd           
+tcp        0      0 :::445                      :::*                        LISTEN      4507/smbd    
+
+===============================================================================
+
+例一：smb客户端的访问（linux to linux）
+
+使用linux的客户端工具做测试：
+
+# smbclient -L //10.0.0.2	
+Password: 				--直接回车，表示以匿名用户登录，但没有看到共享资源，只有服务器的基本信息
+
+使用“a”这个本地用户登录（本机上有这个用户）：
+# smbclient -L //10.0.0.2  -U a		--使用用户名登录，登录失败
+Password: 
+session setup failed: NT_STATUS_LOGON_FAILURE
+
+
+原因：  
+1，默认security = user 模式，这种模式指定访问用户需要密码，匿名用户除外
+2，samba账号有两个要求:
+	1）.要求是服务器端的系统用户  
+	2）.要把系统用户通过samba的命令把它加入到samba服务里去
+
+将本地用户“a”添加到sbm服务中（注意是在服务端做）：
+# smbpasswd -a a		
+New SMB password:		--输入密码，smb的密码可以和系统的密码不一致
+Retype new SMB password:	--再次输入密码
+Added user a.			--看到这条表示添加成功
+
+smbpasswd的选项：
+	-a    添加smb用户
+	-d    禁用smb用户
+	-x    删除smb用户
+	-e    启用被禁用的smb用户
+
+
+# pdbedit -L
+
+# smbclient -L //10.0.0.2  -U a		--再使用a用户登录查看
+Password: 
+Domain=[LI] OS=[Unix] Server=[Samba 3.0.33-3.14.el5]
+
+        testname       Type      Comment
+        ---------       ----      -------
+        IPC$            IPC       IPC Service (Samba Server Version 3.0.33-3.14.el5)
+        a               Disk      Home Directories  --发现多了一个共享资源，共享资源名为用户名一样
+
+
+# smbclient //10.0.0.2/a -U a		--上面只是查看，这里才是真正登录到smb服务器中
+Password: 
+Domain=[LI] OS=[Unix] Server=[Samba 3.0.33-3.14.el5]
+smb: \> pwd				--查看当前登录的目录
+Current directory is \\10.0.0.2\a\
+smb: \> ?				--帮助（和ftp大致一样）
+smb: \> help get			--查看get命令的帮助	
+smb: \> ls				--列表
+smb: \> put install.log			--上传
+putting file install.log as \install.log (966.9 kb/s) (average 966.9 kb/s)
+smb: \> get vvv				--下载
+getting file \vvv of size 0 as vvv (0.0 kb/s) (average 0.0 kb/s)
+smb: \> rm vvv				--删除
+smb: \> rename install.log install	--重命名
+
+mget	批量下载
+mput	批量上传
+
+
+--上面可以看到用户登录samba的默认家目录，有上传，下载，删除，重命令的功能
+
+
+# mount -t cifs -o username=a //10.0.0.2/a /mnt		--将smb服务器共享的目录挂载到本机上
+Password: 
+
+
+--如果你常见得上面的linux客户端操作命令很难记，操作起来不方便，那么你也可以挂载你的samba共享，然后再使用系统cp,ls,mv等基本命令操作
+
+
+smb客户端访问 (windows to linux)
+
+smb服务端配置完成后，打开windows系统上的“运行”（视系统版本而定），输入“\\192.168.1.*”（smb服务器的IP），这时会弹出一个输入用户名和密码的窗口，输入在服务器中添加好的用户名和对应的密码即可登录smb服务器。
+  
+如果想在windows系统上实现开机自动挂载，管理员可以帮做一个映射:
+右键点击“我的电脑”－－工具－－映射网络驱动器－－在文件夹那栏填上\\10.0.0.2\a－－再点其他用户名－－写上a用户和他的密码－－就完成了映射了（根据不同系统版本而定，部分版本系统可能不同）
+
+
+上面的实验知道，就是配置段内的homes这个共享资源
+
+
+[homes]					--定义共享资源的名字，   自动变成对应的用户名
+        comment = Home Directories	--资源描述
+        browseable = no	 		--指定在匿名用户使用－L时是否可见
+        writable = yes			--表示可写，能够上传删除等操作
+
+默认samba是把每个服务器端系统用户的家目录都共享了，但是需要使用 smbpasswd -a加入smb帐号里
+
+
+==========================================================================
+
+例2.  share模式
+# vim /etc/samba/smb.conf 
+
+[global]
+        workgroup = MYGROUP
+        server string = li.cluster.com %v 	--把标识名改一下，方便在windows里mygroup组里查找到它
+        security = share			--在这里把user改为share
+        passdb backend = tdbsam
+        load printers = yes
+        cups options = raw
+[homes]
+        comment = Home Directories
+        browseable = no
+        writable = yes
+[printers]
+        comment = All Printers
+        path = /var/spool/samba
+        browseable = no
+        guest ok = no
+        writable = no
+        printable = yes
+[test]					--新定义了一个共享的资源，共享名为test
+    comment = public for everyone
+    path = /test			--实际共享的资源目录名
+    guest ok = yes			--表示可以匿名登录
+    browseable = yes
+
+
+# /etc/init.d/smb reload		--重装载smb服务
+
+
+# mkdir /test   			--创建此目录
+
+
+
+客户端测试
+# smbclient -L //10.0.0.2		--使用匿名用户查看共享资源列表（后面不加用户名则为使用匿名用户）
+Password: 
+Domain=[MYGROUP] OS=[Unix] Server=[Samba 3.0.33-3.14.el5]
+
+        testname       Type      Comment
+        ---------       ----      -------
+        test           Disk      public for everyone  		--可以看到这个新的共享资源
+
+
+# smbclient //10.0.0.2/test --使用匿名用户登录共享资源名为test
+Password: 
+Domain=[MYGROUP] OS=[Unix] Server=[Samba 3.0.33-3.14.el5]
+Server not using user level security and no password supplied.
+smb: \> put install.log						--匿名用户上传失败
+NT_STATUS_ACCESS_DENIED opening remote file \install.log
+smb: \> rm rc.local						--也不能删除
+NT_STATUS_MEDIA_WRITE_PROTECTED deleting remote file \rc.local
+
+
+
+匿名用户（包括普通用户，但现在是share模式，所有普通现在不能登录）对这个新建的共享资源只能下载
+
+
+
+练习:
+创建一个匿名用户可以登录的隐藏共享资源
+
+[test]		
+    comment = public for everyone
+    path = /test	
+    guest ok = yes	
+    browseable = no
+
+==========================================================================
+
+例3 ，share模式下匿名用户可写
+
+修改配置文件：
+[test]
+    comment = public for everyone
+    path = /test
+    guest ok = yes
+    browseable = yes
+    writeable = yes	--加上这一句，表示可写
+
+
+# /etc/init.d/smb reload
+
+再次上传，还是发现失败
+
+原因：匿名用户登录的时候，samba是使用nobody的身份去操作的，而共享的/test目录权限属性如下，nobody用户是不能写的
+# ll -d /test
+drwxr-xr-x 5 root root 4096 Aug 17 16:27 /test/
+
+修改/test的目录权限，允许nobody用户可写
+# chmod 757 /test
+
+
+# smbclient //10.0.0.2/test 
+Password: 
+smb: \> put install.log		--再次上传成功  
+putting file install.log as \install.log (2486.3 kb/s) (average 2486.3 kb/s)
+smb: \> rename install.log  install  --也可以改名
+smb: \> rm install.log  --也可以删除
+
+
+
+
+--总结上面的例2和例3：
+	如果是share模式，那么smbpasswd -a加入的所有普通用户都无法用了（自己的家目录和共享的目录都登录不了)
+	browseable控制匿名用户客户端是否可见资源
+	public和guest ok控制匿名用户是否可以登录资源
+	writeable控制服务是否允许所有人（包括匿名用户）可写
+	匿名用户以nobody的身份上传，普通用户以自己用户名的身份上传
+	所以服务writeable＝yes，还需要共享的目录在系统级别有W权限才可以上传
+
+
+--无论是什么服务，客户端访问一般都需要经过下面的过程
+
+客户端程序 －－> iptables -->pam (控制客户是否可以登录)--> selinux (程序的域是否能访问文件或目录的类型) --> 服务参数是否允许 －－>系统权限rwx-->服务程序
+
+几个常用服务的匿名用户
+nfs匿名用户为nfsnobody
+ftp匿名用户为ftp,anonymous
+samba匿名用户为nobody
+
+
+例4，share模式，不允许匿名用户登录时的讨论
+
+
+修改配置文件：
+[test]
+    comment = public for everyone
+    path = /test
+    guest ok = no		--表示不允许匿名用户登录，或者public =no 
+    browseable = yes
+    writeable = yes	
+
+
+
+--rhel6下，总结
+share模式和user模式用法的区别
+
+1，share模式，自己手动共享一个资源，并设置允许匿名用户登录
+	
+
+2，share模式，自己手动共享一个资源，并设置不允许匿名用户登录
+--此做法没什么意义
+
+
+3，user模式，自己手动共享一个资源，并设置允许匿名用户登录
+	linux客户端，匿名和普通都可以登录test，普通也可以登录自己的家目录
+	window客户端，普通用户登录自己的家目录和test都没问题。但不能使用匿名用户登录test
+
+
+4，user模式，自己手动共享一个资源，并设置不允许匿名用户登录
+	linux客户端，匿名用户不可以登录任何资源；普通用户可以登录test，也可以登录自己的家目录
+	window客户端，和linux客户端一样
+
+
+
+--上面4种情况，就第1种和第4种是正常的使用情况
+上面例2到例4简单总结为：
+share模式只允许匿名登录；user模式只允许普通用户登录
+samba最常用的是user模式(因为samba是要做精细的权限控制)，所以下面的例子都建立在user模式基础上
+
+
+
+例5：user模式普通用户上传下载的讨论
+
+下载的条件:你登录的普通用户这个身份对要下载的文件有r权限就可以下载
+上传的条件:和share模式一样，首先你登录的普通用户对系统的共享目录要有w权限，服务内也要定义writable=yes或read only = no
+
+
+
+例六：验证writable 参数和 read only参数同时存在的情况
+     验证guest ok参数和public参数同时存在的情况
+	
+
+[test]
+    comment = public for everyone
+    path = /test
+    browseable = yes
+    read only = yes	--这里表示只读，也就是不可写
+    writeable = yes	--这里表示可写，与上面的参数冲突，后面的生效，所以应该是可写的
+
+# /etc/init.d/smb reload    
+
+# smbclient //10.0.0.2/test  -U a
+Password: 
+Domain=[LI] OS=[Unix] Server=[Samba 3.0.33-3.14.el5]
+smb: \> put 456		--上传成功，表示可写，验证成功
+putting file 456 as \456 (0.0 kb/s) (average nan kb/s)
+
+ 
+--总结：这两个参数是一对反义参数，如果同时存在，哪个在后，则哪个生效
+
+--guest ok 和 public这是一对同义参数，如果同时存在，也是哪个在后，则哪个生效.  
+
+--所以这些参数，尽量只写一个，防止冲突
+
+
+
+例七.实现用户互相不能删除文件
+
+使用a用户登录/test共享资源，上传两个文件   123 和 456
+使用b用户登录/test共享资源，上传两个文件   678 和 789
+
+查看一下用户上传的文件属性
+# ls /test/ -l
+total 60
+-rwxr--r--  1 a      a          0 Sep  2 11:39 123
+-rwxr--r--  1 a      a          0 Sep  2 11:39 456
+-rwxr--r--  1 b      b          0 Sep  2 11:43 678
+-rwxr--r--  1 b      b          0 Sep  2 11:43 789
+
+
+# smbclient //10.0.0.2/test  -U a
+smb: \> rm 678
+
+# smbclient //10.0.0.2/test  -U b
+smb: \> rm 123
+
+把a用户上传的456改成577，也就是自己对自己的文件没有写权限
+# chmod 577 /test/456
+# ls /test/ -l
+total 60
+-r-xrwxrwx  1 a      a          0 Sep  2 11:39 456
+
+# smbclient //10.0.0.2/test  -U b	--用b用户去删除，删除失败
+smb: \> rm 456
+NT_STATUS_CANNOT_DELETE deleting remote file \456
+
+
+再次把a用户上传的456改成200，也就是自己对自己的文件只有写权限
+# chmod 200 /test/456
+# ls /test/ -l
+total 60
+--w-------  1 a      a          0 Sep  2 11:39 456
+
+# smbclient //10.0.0.2/test  -U b  --用b用户去删除，删除成功
+smb: \> rm 456
+
+分析总结：只要文件的拥有者对这个文件有可写的权限，那么别人（包括自己)就可以删除它 （200权限例子）
+   文件的拥有者对这个文件没有可写的权限，别人就不能删除它，连自己都不能删除  （577权限的例子）
+
+要实现不能删除别人上传的但可以删除自己上传的,解决方法：
+		chmod  o+t /test
+		同时文件的owner对这个文件要有写权限
+
+例八： create mask 和 directory mask 直接定义上传后的文件或者目录的权限
+
+[test]
+    comment = public for everyone
+    path = /test
+    browseable = yes
+    read only = yes
+    writeable = yes
+    create mask = 0444		--表示创建的或者上传的文件权限为444(不指定这个参数默认为744）
+    directory mask = 0666	--表示创建的或者上传的目录权限为666（不批定这个参数默认为755)
+
+# /etc/init.d/smb  restart     
+
+=======================================
+
+--关于创建（上传）文件，创建目录的默认权限的总结
+
+系统有umask
+vsftp有anon_umask和local_umask
+--这两个，一般来说都是目录的默认权限为777－umask，文件为666-umask
+
+samba有create mask和directory mask
+--samba里是定义的是多少，一般来说默认就是多少
+======================================
+
+
+--记住:无论是系统的umask还是vsftpd的anon_umask,local_umask，还有samba的create mask，得到的权限不一定完全和你的配置相同（一定以最终测试的结果为主）
+
+例九：user模式下，实现a用户可以上传下载，b用户只能下载，拒绝匿名用户和其它用户(也用smbpasswd -a加入的用户)访问
+	valid users  = a,b,@group   	--只允许a,b用户和group组（只要属于这个组就可以，不一定要gid为这个组)访问
+	write list  = a，@group    	--允许写的用户列表
+
+[test]
+    comment = public for everyone
+    path = /test  
+    guest ok = no			--拒绝匿名用户，或者使用public = no
+    valid users = a,b
+    write list = a			--写列表只允许a用户写，表示只允许a用户上传
+ 
+# /etc/init.d/smb  reload
+
+
+# chmod 757 /test 
+测试
+
+--相对的，还有一个读列表  read list 表示只读(也就是下载)的用户列表，与write list相反；
+--这里不要理解错了，read list不是控制哪些人只能读，也是控制哪些人只能写，只不过和write list相反而已
+
+练习:user模式下，实现a用户只能上传(不能下载自己上传的文件)，b用户只能下载，拒绝匿名用户和其它用户访问
+在例九的答案基础上再加一个参数create mask = 0344 就可以
+
+练习:user模式下，实现a用户可以上传下载，b用户只能下载（但不能下载a上传的文件），拒绝匿名用户和其它用户访问
+在例九的答案基础上再加一个参数create mask = 0704 就可以
+
+
+例十:user模式下，实现a用户可以上传下载，b用户只能下载，属于smb组的用户
+可以登录和上传下载，别的普通用户和匿名用户都拒绝
+
+public = no
+valid users = a,b,@smb
+write list = a,@smb
+
+[test]
+    comment = public for a,b,@smb
+    path = /test
+    public = no
+    valid users = a,b,@smb	--注意users不要写成user
+    write list = a,@smb		--@也可以使用+
+
+
+# groupadd smb
+# useradd smb1 -g smb
+# useradd smb2 -g smb
+# smbpasswd -a smb1
+# smbpasswd -a smb2
+# id smb1
+uid=521(smb1) gid=521(smb) groups=521(smb)
+# id smb2
+uid=522(smb2) gid=521(smb) groups=521(smb)
+
+验证OK	
+
+c:\net use * /del				--在windwos系统中清除已经连接的缓存
+
+
+
+例十一:user模式下，实现：
+boss用户可以上传下载(下载所有人),还能删除自己上传的文件
+secretary用户只能下载(下载所有人)
+属于it组的用户(使用it1和it2两个用户来实验就可以)可以登录并且可以上传，下载和删除自己上传的文件，用户互相之间不能删除，互相之间不能下载别人的文件，但可以下载boss上传的文件
+别的普通用户和匿名用户都拒绝
+
+useradd boss
+useradd secretary
+groupadd it
+useradd -g it it1
+useradd -g it it2
+
+smbpasswd -a boss
+smbpasswd -a secretary
+smbpasswd -a it1
+smbpasswd -a it2
+
+user模式下
+
+[test]
+        comment = hahahahahaha
+        path = /test
+        public = no
+        browseable = no
+        valid users = boss,secretary,@it
+        write list = boss,@it
+        create mask = 0704
+
+
+# mkdir /test  
+# chmod 757 /test
+# chmod o+t /test
+
+
+练习:在例十一的基础上，如果再加一个sale组，需求和it组一样，能否实现
+
+
+这样做的话，会造成sale组和it组的成员可以互相下载，最好的做法是每个组使用不同的目录
+
+可以把sale组和it组的组的GID改成同一个公共组，这样可以实现。但这样其实是把这两个组的人当一个组来对待了
+
+
+
+练习：在例十一的基础上，如果加一条需求（boss能删所有人)，能否实现?
+答案:理论上无法实现
+      但实现也有方法实现
+	1.在上面的基础上chown boss.boss /test就可以了
+
+例十二： user模式下，实现:
+a上传下载（可以下载所有人上传的）
+b只能下载(可以下载所有人上传的)
+c可以上传但只能下载自己上传的
+都可以删除自己的文件，互相不能删除它人文件，其他用户和匿名用户登录拒绝
+
+分析：
+主要是让a和c上传变成下面的情况
+rwx---r--   a    a   file
+rwx---r--   c    c   file
+c加到a组
+
+# useradd a
+# useradd b
+# useradd c
+# usermod -G a c
+
+# smbpasswd -a a
+# smbpasswd -a b
+# smbpasswd -a c
+
+# mkdir /test
+# chmod 757 /test
+# chmod o+t /test
+
+# vim /etc/samba/smb.conf
+
+[test]
+        comment =  test resource
+        path = /test
+        guest ok = no
+        browseable = yes
+        valid users = a,b,c
+        write list = a,c
+        create mask = 0704
+
+# /etc/init.d/smb restart
+
+还有一个方法如下，（有兴趣自行实现）
+rwxr-----       a       a       file1
+rwxr-----       c       c       file2
+a加入c组,b加入a,c组
+
+例十三： user模式下，实现：
+a上传下载（可以下载所有人上传的）
+b只能下载(可以下载所有人上传的)
+c可以上传但只能下载a上传的,自己上传的也不能下	
+都可以删除自己的文件，互相不能删除它人文件，其他用户和匿名用户登录拒绝
+
+mkidr /test/
+chmod 1757 /test/
+
+public=no
+valid users=a,b,c
+write list=a,c
+
+方法一：把同一个目录，做成两个不同的共享名，在这两个不同的共享里分别对a和c用户来控制他上传的权限，然后让他们访问不同的共享名
+
+方法二：
+# mkdir /test
+# chmod 757 /test
+# chmod o+t /test
+
+public=no
+valid users=a,b,c
+write list=a,c
+
+分析：
+实现a上传的为默认的0744,c上传的为0344就可以实现
+rwxr--r--       a       a       file
+-wxr--r--       c       c       file
+
+如果实现不同用户上传的权限不一样呢?这里就要用到samba的用户子配置文件
+
+# useradd a
+# useradd b
+# useradd c
+# smbpasswd -a a
+# smbpasswd -a b
+# smbpasswd -a c
+# mkdir /test
+# chmod 757 /test
+# chmod o+t /test
+
+# vim /etc/samba/smb.conf
+
+config file = /etc/samba/smb.conf.%U	--手动加上这一句，表示针对每个用户都可以单独写一个配置文件,加在上面的全局［global]里,U是指user
+
+[test]
+        comment = 35's test resource
+        path = /test
+        public = no
+        browseable = yes
+        valid users = a,b,c
+        write list = a
+        create mask = 0744
+
+# vim /etc/samba/smb.conf.c
+[test]
+        comment = 35's test resource
+        path = /test
+        writable = yes
+        create mask = 0344					--没有读权限
+
+# /etc/init.d/smb restart
+
+
+=======================================
+
+
+例十四：访问控制
+
+注意写到全局参数[global]下
+
+1,拒绝10.0.0网段
+hosts deny ＝ 10.0.0.
+
+1,拒绝10.0.0网段，但是允许10.0.0.35
+hosts deny ＝ 10.0.0.
+hosts allow = 10.0.0.35 
+
+2，拒绝所有，但允许10.0.0网段，但又不允许10.0.0.45
+hosts deny = all
+hosts allow = 10.0.0.  EXCEPT 10.0.0.45
+
+
+也可以写到单独的共享资源下，只针对此共享资源来进行访问控制
+
+
+

@@ -1,0 +1,872 @@
+DNS服务器：
+什么是DNS服务器？
+简单来说就是将不容易记住的IP地址转换为容易主机的网站域名的一个服务器（www.baidu.com www.taobao.com）
+
+# vim /etc/nsswitch.conf 
+hosts:      files dns		--涉及到名称翻译的都会先查找/etc/hosts,再查找DNS(/etc/resolv.conf)
+
+主机名和域名的区别？
+
+主机名是内网的名字
+域名是外网的名字
+
+主机名和域名其实是两个完全可以不同的名字，但是有很多软件（如邮件系统postfix)会默认认为它们一致
+
+DNS服务器特点：
+1，分布式的数据库
+2，解决了数据不一致，避免了名字冲突
+3，有缓存机制，提高了性能和可靠性
+
+分层结构，最多127层
+
+查询方式：递归查询，迭代查询
+
+全世界共有有13台DNS根域服务器
+
+顶级域名
+
+.com    .org     .edu   .gov       .net      .mil    .info
+商业     组织	 教育    政府      通讯      军事     信息	
+
+			根
+
+	cn    	hk  	us     jp     tw     in
+  
+ 	  .com.cn      .net.us    .edu.cn
+
+深圳电信的DNS地址：  
+	首选的：202.96.134.133
+	备选的：202.96.128.86
+
+课后扩展：
+上网查询 全球现在免费的DNS服务器
+
+对应的linux主机上写DNS指向，由/etc/resolv.conf
+
+# vim /etc/resolv.conf 
+nameserver 10.0.0.1		--一共可以写三个，如果第一个没有记录，则找第二个
+
+
+	根（cn）
+	｜
+	｜
+       中国(com)			       USA      	
+	｜
+	｜
+ 大运营商(电信)
+	｜
+	｜
+ 小运营商(百度，google)
+	｜
+	｜
+	｜
+自己的DNS服务器		    	    US电信
+	｜			      ｜		
+	｜			      ｜
+qianyun.com.cn.			  abc.com.us.
+
+
+上图中qianyun在小运营商申请了域名，自己搭DNS服务器，请问如何与运营商联系起来（意思就是说，域名的查询怎样才能转到你自己搭的DNS服务器）
+
+如果上面的DNS服务器做好了，全世界的任意一个访问点如何能访问到你的这个DNS服务器里的域名？
+
+上图中DNS服务器里除了自己的域名和IP对应，能否写上qq.com这个域和IP的对应呢?
+
+===========================================================
+
+开始安装DNS服务器
+
+bind 	(berkeley  internet name domain)
+
+# yum  install bind* -y
+
+查看软件包；
+# rpm -qa |grep ^bind-		--rhel6.3下的包
+bind-utils-9.8.2-0.10.rc1.el6.x86_64
+bind-chroot-9.8.2-0.10.rc1.el6.x86_64
+bind-libs-9.8.2-0.10.rc1.el6.x86_64
+bind-9.8.2-0.10.rc1.el6.x86_64
+bind-dyndb-ldap-1.1.0-0.9.b1.el6.x86_64
+
+DNS使用的协议端口：  tcp/udp 53
+
+查询DNS记录只使用udp 53端口
+主DNS服务器和备DNS服务器之间的数据同步使用tcp 53端口
+
+
+
+配置文件的目录：
+
+没有安装bind-chroot的话
+配置文件为/etc/named.conf 
+数据文件在/var/named目录下
+
+安装了bind-chroot
+配置文件为/var/named/chroot/etc/named.conf	--默认没有
+数据文件在/var/named/chroot/var/named目录
+
+从上面看到装了bind-chroot，笼环境为/var/named/chroot/
+
+# ls /var/named/chroot/etc/	--域配置文件目录
+localtime   rndc.key
+
+# ls /var/named/chroot/var/named/ 
+data   slaves 
+
+# ls /var/named/chroot/var/named/data/  --存放主zone文件
+
+# ls /var/named/chroot/var/named/slaves/  --存放从zone文件
+
+# ls /var/named/chroot/etc/		
+localtime  named  pki
+
+# ls /var/named/chroot/var/named/	--空的
+
+在红帽6里你配置/etc/named.conf，重启服务后，他会链接到/var/named/chroot/etc/named.conf
+你配置/var/named/,重启服务后，他也会链接到/var/named/chroot/var/named/
+
+rhel6.3下配置模版在/etc/named.conf或者在/usr/share/doc/bind-9.8.2/目录下
+
+安装完成后启动DNS服务器：
+# /etc/init.d/named restart
+Stopping named:                                            [  OK  ] 
+Generating /etc/rndc.key: 
+
+在启动DNS时出现Generating /etc/rndc.key:	卡在这里了
+
+解决方法:
+# rndc-confgen -r /dev/urandom -a 
+wrote key file "/etc/rndc.key"
+# /etc/init.d/named restart 
+Stopping named:                                            [  OK  ] 
+Starting named:                                            [  OK  ] 
+
+
+配置文件详解：
+//
+
+// named.conf
+
+//
+
+// Provided by Red Hat bind package to configure the ISC BIND named(8) DNS
+
+// server as a caching only nameserver (as a localhost DNS resolver only).
+
+//
+
+// See /usr/share/doc/bind*/sample/ for example named configuration files.
+
+// 在/usr/share/doc/bind*/sample/ 				#该目录中可以查看named配置案例
+
+options {
+
+listen-on port 53 { any; }; 					#监听端口 IPV4
+
+listen-on-v6 port 53 { any; };  				#监听端口 IPV6
+
+directory "/var/named";  					#工作目录
+
+dump-file "/var/named/data/cache_dump.db"; 			#数据存放目录
+
+    statistics-file "/var/named/data/named_stats.txt";		#数据存放目录
+
+memstatistics-file "/var/named/data/named_mem_stats.txt";	#数据存放目录
+
+allow-query     { any; }; 					#允许解析的IP地址
+
+recursion yes; 							# 开启递归查询
+
+dnssec-enable yes; 						#开启加密
+
+dnssec-validation yes; 						#在递归查询服务器上开启DNSSEC验证
+
+/* Path to ISC DLV key */
+
+bindkeys-file "/etc/named.iscdlv.key"; 				
+
+managed-keys-directory "/var/named/dynamic"; 			
+};
+
+logging { 							#日志
+
+        channel default_debug {
+
+        file "data/named.run";
+
+        severity dynamic;
+
+        };
+
+};
+
+zone "." IN {
+
+type hint;
+
+file "named.ca";
+
+};
+
+include "/etc/named.rfc1912.zones";
+
+include "/etc/named.root.key";
+
+
+例一.正向解析(将域名解析成ip)
+
+配置步骤：
+	1，编辑named.conf		--记录你的域和域对应的数据文件在哪
+	2, 编辑zone区域文件		--就是数据文件，记录域名和IP的对应
+
+
+# vim /etc/named.conf			--主配置文件
+
+options {
+	listen-on port 53 { any; };	--改为any，表示监听所有
+	listen-on-v6 port 53 { ::1; };
+	directory 	"/var/named";
+	dump-file 	"/var/named/data/cache_dump.db";
+        statistics-file "/var/named/data/named_stats.txt";
+        memstatistics-file "/var/named/data/named_mem_stats.txt";
+	allow-query     { any; };	--改为any,表示所有人能查询这台服务器
+	recursion yes;
+
+
+# vim /etc/named.rfc1912.zones	--打开这个文件，最后加上一个域的配置
+
+zone "cluster.com" IN {
+        type master;
+        file "data/master.cluster.com.zone";
+};
+
+
+
+# vim /var/named/data/master.cluster.com.zone	--建立数据文件，路径要对应上面的配置
+
+$TTL 3600										--缓存时间
+@	IN	SOA	ns.cluster.com.  root.cluster.com. (
+			2013050801	--版本号，下面的是各种时间，如果不做主从结构，这些随便写
+			30
+			60
+			90
+			3600 )
+@	IN	NS	ns.cluster.com.
+ns      IN      A       10.0.0.2	--这里就是DNS服务器的IP(实际应该是公网IP，但这里是内网环境，所以写的内网IP），但记得加点，也可以写DNS服务器的外网域名；并且这里可以写多个NS，代表了你公司的多台DNS服务器
+mail	IN	A	1.1.1.1		--A记录就是真正的数据，这里代表了mail.cluster.com的公网地址为1.1.1.1
+dns	IN	A	10.0.0.2
+bbs	IN	A	1.1.1.1
+
+
+				
+# /etc/init.d/named restart
+
+
+--SOA  Start  Of   Authority
+--NS   Name Server
+--A    Address
+
+客户端
+# vim /etc/resolv.conf		--修改客户端的DNS服务器
+nameserver 192.168.1.12
+
+
+
+# nslookup mail.cluster.com
+Server:		192.168.1.12
+Address:	192.168.1.12#53
+
+Name:	mail.cluster.com
+Address: 192.168.1.1
+
+
+# nslookup bbs.cluster.com
+Server:		192.168.1.12
+Address:	192.168.1.12#53
+
+Name:	bbs.cluster.com
+Address: 192.168.1.1
+
+# dig bbs.cluster.com		--查询DNS包括NS记录，A记录，MX记录等相关信息
+# host bbs.cluster.com		--测试域名系统工作是否正常
+
+
+
+例二：反向解析
+
+IP解析为域名
+--比如我们使用公司的一台内部机器，可以模拟zhangsan@126.com去给另一个lisi@qq.com发邮件； 那么qq如何知道你发的这封邮件是真的从126来的master.0.0.10.in-addr.arpa.zone呢？
+--通过反向解析（IP解析为域名)就可以判别
+
+第一步：服务器端主配置文件添加以下区域：
+# vim /etc/named.rfc1912.zones
+
+zone "1.168.192.in-addr.arpa" IN {
+        type master;
+        file "data/master.1.168.192.in-addr.arpa.zone";
+};
+
+
+--我这里做的是一个内网网段，在这里只是实验
+
+
+第二步：建立区域数据文件
+# vim /var/named/data/master.1.168.192.in-addr.arpa.zone
+
+$TTL 86400
+@       IN      SOA     192.168.1. 	root. (
+                        201601281422
+                        30
+                        40
+                        50
+                        86400 )
+        IN      NS      192.168.1.1.
+10      IN      PTR     www.cluster.com.				--192.168.1.10-->www.cluster.com.
+11      IN      PTR     news.cluster.com.				--192.168.1.11-->news.cluster.com.
+12      IN      PTR     tech.cluster.com.				--192.168.1.12-->tech.cluster.com.
+
+
+
+# /etc/init.d/named  restart
+
+客户端测试：
+# nslookup 192.168.1.12
+Server:		192.168.1.12
+Address:	192.168.1.12#53
+
+12.1.168.192.in-addr.arpa	name = tech.cluster.com.
+
+# nslookup 192.168.1.11
+Server:		192.168.1.12
+Address:	192.168.1.12#53
+
+11.1.168.192.in-addr.arpa	name = news.cluster.com.
+
+# nslookup 192.168.1.10
+Server:		192.168.1.12
+Address:	192.168.1.12#53
+
+10.1.168.192.in-addr.arpa	name = www.cluster.com.
+
+
+例三，使用DNS的轮循（round-robin)实现简单的负载均衡  （一个域名对应多个IP）  属于一种基本的负载均衡(load balance)
+
+	
+DNS轮循相对于其它的负载均衡软件来说：
+优点：配置简单，成本低
+缺点：没有后台健康检查，算法单一,因为DNS的缓存，会影响你修改DNS调度的生效速度
+
+			
+			      client
+				 |		
+			     DNS服务器
+				 ｜
+ 				 ｜
+			  www.cluster.com
+
+
+		web1		web2		web3   
+			
+	   192.168.1.11	    192.168.1.12    192.168.1.13
+
+
+			      rsync
+		   共享存储  保证数据一致
+
+服务器端操作：
+
+第一步：
+# vim /etc/named.rfc1912.zones		--打开这个文件，最后加上一个域的配置（刚刚有添加的就不用添加了）
+
+zone "cluster.com" IN {
+        type master;
+        file "data/master.cluster.com.zone";
+};
+
+第二步：
+# vim /var/named/data/master.cluster.com.zone 
+
+
+$TTL 3600
+@       IN      SOA     cluster.com.    	root. (
+                        201601281143
+                        30
+                        60
+                        90
+                        3600 )
+        IN      NS      192.168.1.12.
+www     IN      A       192.168.1.11
+www     IN      A       192.168.1.12
+www     IN      A       192.168.1.13
+
+# /etc/init.d/named reload		重新加载DNS服务
+
+
+客户端测试：
+# nslookup www.cluster.com
+Server:		192.168.1.12
+Address:	192.168.1.12#53
+
+Name:	www.cluster.com
+Address: 192.168.1.13
+Name:	www.cluster.com
+Address: 192.168.1.11
+Name:	www.cluster.com
+Address: 192.168.1.12
+
+
+例四：CNAME记录的使用	（一个IP对应多个域名) 别名
+
+
+# vim /var/named/data/master.cluster.com.zone 
+
+$TTL 86400
+@       IN      SOA     192.168.1.12.    daniel. (
+                        2013011101
+                        10
+                        20
+                        30
+                        86400 )
+        IN      NS      192.168.1.12.
+www     IN      CNAME   venus
+venus   IN      CNAME   mars
+mars    IN      CNAME   earth
+earth   IN      CNAME   web
+web     IN      A       192.168.1.10
+web     IN      A       192.168.1.11
+web     IN      A       192.168.1.12
+mail    IN      A       192.168.1.13
+
+# /etc/init.d/named reload
+
+客户端验证：
+# nslookup www.cluster.com
+Server:		192.168.1.12
+Address:	192.168.1.12#53
+
+www.cluster.com	canonical name = venus.cluster.com.
+venus.cluster.com	canonical name = mars.cluster.com.
+mars.cluster.com	canonical name = earth.cluster.com.
+earth.cluster.com	canonical name = web.cluster.com.
+Name:	web.cluster.com
+Address: 192.168.1.10
+Name:	web.cluster.com
+Address: 192.168.1.11
+Name:	web.cluster.com
+Address: 192.168.1.12
+
+-------------------------------------------------------------------------------------
+
+例五：实现直接对域的解析
+
+# vim /var/named/data/master.cluster.com.zone 
+$TTL 86400
+@       IN      SOA     192.168.1.145.  root. (
+                        201601281422
+                        30
+                        40
+                        50
+                        86400 )
+        IN      NS      192.168.1.145.
+cluster.com.    IN      A       192.168.1.73
+
+
+# /etc/init.d/named reload
+
+
+# nslookup cluster.com
+Server:		10.0.0.2
+Address:	10.0.0.2#53
+
+Name:	cluster.com
+Address: 3.3.3.3
+
+
+例六：使用通配符实现泛解析
+
+
+*       IN      A       4.4.4.4
+
+
+# nslookup sdfasfsasdfsad.cluster.com
+Server:		10.0.0.2
+Address:	10.0.0.2#53
+
+Name:	sdfasfsasdfsad.cluster.com
+Address: 4.4.4.4
+
+
+例七： 辅助DNS服务器（从DNS服务器）的配置
+
+
+				
+		10.0.0.2	     10.0.0.61
+		主	  －－－－		从
+	    type master	 	type slave
+	    zone文件		 	被动的从主传过来zone文件
+
+
+
+	从DNS服务器的准备工作：
+		和主DNS服务器一样
+
+准备工作有：
+1，主机名三步
+2，时间同步
+3，iptables,selinux关闭
+	iptables -L   --查看,有写规则的话,则表示需要关闭
+	iptables -F	--清空规则 
+	chkconfig iptables off
+
+	 ls /selinux/	--有数据,表示selinux开启着,如果没数据则表示selinux关闭
+	vim /etc/selinux/config
+	SELINUX=disabled	--改为disabled
+
+	reboot   --selinux的关闭需要重启电脑才能完全生效
+如果你不想重启来关闭selinux，那么使用setenforce 0(这不是关闭selinux，只是改成警告模式,但是这种模式不会拒绝你的操作)
+
+
+
+4，yum配置好
+
+
+1，配置从服务器的主配置文件
+
+
+在从服务器上安装bind软件包
+
+yum install bind* -y
+
+# vim /etc/named.conf 	--打开此文件，和主的配法一样
+
+options {
+	listen-on port 53 { any; };	--改为any
+	listen-on-v6 port 53 { ::1; };
+	directory 	"/var/named";
+	dump-file 	"/var/named/data/cache_dump.db";
+        statistics-file "/var/named/data/named_stats.txt";
+        memstatistics-file "/var/named/data/named_mem_stats.txt";
+	allow-query     { any; };	--改为any
+	recursion yes;
+
+	dnssec-enable yes;
+	dnssec-validation yes;
+	dnssec-lookaside auto;
+
+	/* Path to ISC DLV key */
+	bindkeys-file "/etc/named.iscdlv.key";
+
+	managed-keys-directory "/var/named/dynamic";
+};
+
+logging {
+        channel default_debug {
+                file "data/named.run";
+                severity dynamic;
+        };
+};
+
+zone "." IN {
+	type hint;
+	file "named.ca";
+};
+
+include "/etc/named.rfc1912.zones";
+include "/etc/named.root.key";
+
+
+
+# vim /etc/named.rfc1912.zones  --在最后加上下面一段
+
+
+zone "cluster.com" IN {
+        type slave;	--类型定义为slave
+        file "slaves/slave.cluster.com.zone"; --最好把zone文件定义到slaves目录下； 
+        masters  { 10.0.0.2; }; --指定主DNS服务器的IP地址
+};
+
+
+/etc/init.d/named start	--在从上启动named服务
+Starting named:                                            [  OK  ]
+
+
+
+# ls /var/named/slaves/ --再次查看发现是主上面下载过来了
+slave.cluster.com.zone
+
+
+
+	如果不能下载过来：
+		查看网络是否连通，就是ping一下
+		查看iptables,selinux是否关闭
+		时间是否同步等
+
+
+
+# tail /var/log/messages	--或者查看日志也可以看到相关的日志内容
+
+
+
+例八：验证主DNS到从DNS的更新
+
+	1，更新主服务器的区域文件的记录，注意，加大版本号
+	
+	vim /var/named/chroot/var/named/data/master.cluster.com.zone 
+	
+	随便添加一条记录，然后增大版本号的数字，最好把刷新时间改小点（比如60秒）
+
+
+	2，/etc/init.d/named restart				--重启服务
+
+
+	3，在从域名服务器这里查看
+
+
+1，直接删除/var/named/chroot/var/named/slaves/slave.cluster.com.zone 文件
+	然后重启服务 
+
+
+2，从DNS服务器什么都不用做，用watch tail /var/log/messages查看日志看是否能够自动更新过来	--或者使用tail -f来查看
+
+
+--上面看到这样的同步机制很慢，如果主服务器更新了大量记录，而从服务器还没有同步过去时，主服务器就崩溃了，则就会造成数据的不一致
+
+--所以可以用脚本或程序开发或共享存储等技术实现同步更新就可以了，不一定要使用它自带的refresh功能
+
+
+例九：限制从DNS的IP
+
+	主对从DNS的限制
+
+vim /var/named/chroot/etc/named.conf 
+
+     zone "cluster.com" IN {
+        type master;
+        file "data/master.cluster.com.zone";
+        allow-transfer { 10.0.0.61; };	--加上这一句，限制了只有61这台机才能做这个域的从DNS
+};
+
+
+例十：转发服务器的设置
+
+	
+前面所做的全是一个域的情况，也就是我只能解析cluster.com这一个域，如果想要解析另外一个域
+
+方法一：在named.conf里再写一个域
+然后再配置一个对应zone数据文件
+重启服务
+
+
+方法二：做转发
+
+	单域转发
+   1,named.conf里加上下面一段
+
+zone "man.com" IN {
+        type forward;
+        forwarders { 10.0.0.127; };
+};
+
+修改dnssec-validation改为no
+
+options {
+		dnssec-validation no;
+};
+
+
+/etc/init.d/named restart
+
+
+# nslookup station171.man.com  --查找能查出来，是因为127的DNS服务器的zone文件里有，我这里转发过去查找到结果，再返回过来
+Server:         10.0.0.45
+Address:        10.0.0.45#53
+
+Non-authoritative answer:
+Name:   station171.man.com
+Address: 10.0.0.171
+
+
+2，完全转发
+# vim /etc/named.conf
+
+options {
+	dnssec-validation no;
+ 	forwarders { 10.0.0.1; };	--这是写到options里的完全转发，指的是本机的zone文件查不到的情况，会去查找10.0.0.1,都查不到才会返回错误
+};
+
+options {
+        forwarders { 10.0.0.127;10.0.0.199; }; --可以用分号隔开，写多个转发服务器的IP
+};
+
+
+
+
+例十一：缓存dns服务器
+
+如果你的DNS服务器就按上面的例子来配置一个cluster.com这个域；
+如果你的公司内网用户，把DNS不去指向外网，而用内网地址指向你的DNS服务器去查baidu,youku,sina等域名，会是什么情况？
+
+情况一：如果DNS服务器有一个能出去的外网网关，那么内网用户也可以查询到除了cluster.com之外的域名
+
+情况二：没有网关，则不行； 但在去掉网关之前，你查过的域名还是可以，因为有缓存
+route del default gw 10.0.0.1		--删除默认网关
+route add default gw 10.0.0.1		--添加默认网关
+
+情况三：或者你做了转发服务器，转发给外网或者转发给一个有外网网关的DNS服务器都可以
+
+--DNS服务器缓存的清除方法rndc flush
+
+
+怎么做一个only cache的DNS服务器?
+一个DNS管理一个域或不管理域，然后加一个能出去的外网网关就OK。
+
+
+
+子域
+
+
+			baidu.com
+
+
+    news.baidu.com			tieba.baidu.com
+
+
+us.news.baidu.com			sports.tieba.baidu.com
+cn.news.baidu.com			miltary.tieba.baidu.com
+
+
+练习：
+1，简述通过浏览器上www.baidu.com的过程(域名的查找过程，DNS的访问和网络的访问过程)
+
+/etc/nsswitch.conf
+/etc/hosts
+/etc/resolv.conf
+
+
+2，做为一个公司的技术人员，要不要搭建DNS服务器，哪些情况才可能需要搭建
+
+
+
+3，简述主DNS服务器，从DNS服务器，缓存DNS服务器,转发DNS服务器的区别及应用
+
+
+4，下面是dig www.sina.com产生的结果，通过下面的结果，画出sina的DNS的架构图，并写出他的配置
+;; ANSWER SECTION:
+www.sina.com		35	IN	CNAME	us.sina.com.cn.
+us.sina.com.cn.		2	IN	CNAME	news.sina.com.cn.
+news.sina.com.cn.	2	IN	CNAME	jupiter.sina.com.cn.
+jupiter.sina.com.cn.	59	IN	CNAME	libra.sina.com.cn.
+libra.sina.com.cn.	182	IN	A	202.108.33.98
+libra.sina.com.cn.	182	IN	A	202.108.33.99
+libra.sina.com.cn.	182	IN	A	202.108.33.70
+libra.sina.com.cn.	182	IN	A	202.108.33.71
+libra.sina.com.cn.	182	IN	A	202.108.33.72
+libra.sina.com.cn.	182	IN	A	202.108.33.74
+libra.sina.com.cn.	182	IN	A	202.108.33.75
+libra.sina.com.cn.	182	IN	A	202.108.33.76
+libra.sina.com.cn.	182	IN	A	202.108.33.77
+libra.sina.com.cn.	182	IN	A	202.108.33.78
+libra.sina.com.cn.	182	IN	A	202.108.33.79
+libra.sina.com.cn.	182	IN	A	202.108.33.80
+libra.sina.com.cn.	182	IN	A	202.108.33.81
+libra.sina.com.cn.	182	IN	A	202.108.33.95
+libra.sina.com.cn.	182	IN	A	202.108.33.96
+libra.sina.com.cn.	182	IN	A	202.108.33.97
+
+;; AUTHORITY SECTION:
+sina.com.cn.		18423	IN	NS	ns3.sina.com.cn.
+sina.com.cn.		18423	IN	NS	ns1.sina.com.cn.
+sina.com.cn.		18423	IN	NS	ns2.sina.com.cn.
+sina.com.cn.		18423	IN	NS	ns4.sina.com.cn.
+
+;; ADDITIONAL SECTION:
+ns1.sina.com.cn.	24775	IN	A	202.106.184.166
+ns2.sina.com.cn.	24775	IN	A	61.172.201.254
+ns3.sina.com.cn.	24775	IN	A	202.108.44.55
+ns4.sina.com.cn.	24775	IN	A	121.14.1.22
+
+
+
+2题答案：
+看公司服务器或电脑数量来取决是否需要搭建DNS服务器，如果在公司内部拥有大量的服务器或电脑（IP数量）的时候，可以搭建DNS服务器来实现更加方便的记忆！
+
+3题答案：
+主DNS	--主要负责DNS域名解析的服务器
+从DNS	--相当于一个备份，当主挂掉后，从会代替主继续提供域名解析，做到该域名服务器不会因突发情况而宕机
+缓存	--将我们经常解析的域名储存到该服务器中，实现快速解析，节约网络资源，适合企业的局域网使用
+转发	--当你配置的DNS服务器中没有需要解析的域名是，可以使用该方式实现转发到其他DNS服务器上进行域名解析
+
+4题答案：
+# cat /etc/named.rfc1912.zones
+
+zone "sina.com.cn" IN {
+	type master;
+	file "data/master.sina.com.cn.zone";
+};
+
+zone "sina.com" IN {
+	type master;
+	file "data/master.sina.com.zone";
+};
+
+
+
+# cat /var/named/data/master.sina.com.cn.zone 
+$TTL 3600
+@	IN	SOA	fsdfsafsa.	sdfasd. (
+			2013071202
+			10
+			20
+			30
+			3600 )
+	IN	NS	ns1.sina.com.cn.
+	IN	NS	ns2.sina.com.cn.
+	IN	NS	ns3.sina.com.cn.
+	IN	NS	ns4.sina.com.cn.
+ns1	IN	A	202.106.184.166
+ns2	IN	A	61.172.201.254
+ns3	IN	A	202.108.44.55
+ns4	IN	A	121.14.1.22
+libra	IN	A	202.108.33.98
+libra	IN	A	202.108.33.99
+libra	IN	A	202.108.33.70
+libra	IN	A	202.108.33.71
+libra	IN	A	202.108.33.72
+libra	IN	A	202.108.33.74
+libra	IN	A	202.108.33.75
+libra	IN	A	202.108.33.76
+libra	IN	A	202.108.33.77
+libra	IN	A	202.108.33.78
+libra	IN	A	202.108.33.79
+libra	IN	A	202.108.33.80
+libra	IN	A	202.108.33.81
+libra	IN	A	202.108.33.95
+libra	IN	A	202.108.33.96
+libra	IN	A	202.108.33.97
+jupiter	IN	CNAME	libra
+news	IN	CNAME	jupiter
+us	IN	CNAME	news
+
+
+cat 1.txt |awk -F"." '{print $1,$5"."$6"."$7"."$8}' |awk '{print $1"\t"$3"\t"$4"\t"$5}' >> /var/named/data/master.sina.com.cn.zone
+
+
+
+
+# cat /var/named/data/master.sina.com.zone 
+$TTL 3600
+@	IN	SOA	fsdfsafsa.	sdfasd. (
+			2013071202
+			10
+			20
+			30
+			3600 )
+	IN	NS	ns1.sina.com.cn.
+	IN	NS	ns2.sina.com.cn.
+	IN	NS	ns3.sina.com.cn.
+	IN	NS	ns4.sina.com.cn.
+ns1	IN	A	202.106.184.166
+ns2	IN	A	61.172.201.254
+ns3	IN	A	202.108.44.55
+ns4	IN	A	121.14.1.22
+www	IN	CNAME	us.sina.com.cn.

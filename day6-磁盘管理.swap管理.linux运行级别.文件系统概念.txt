@@ -1,0 +1,372 @@
+磁盘管理
+
+磁盘创建过程：
+raid（可选）-->远程存储访问(iscsi,gnbd)（可选）-->分区-->LVM（可选)-->格式化-->挂载-->分布式文件系统（可选）
+
+我们现在讲： 分区，格式化，挂载。
+
+相关的基本管理命令有fdisk,parted(如果是用的GPT分区，则不能使用fdisk)
+
+fdisk 命令		磁盘管理的一种
+
+# fdisk -l		列出当前系统所有的磁盘信息
+
+Disk /dev/sda: 500.1 GB, 500107862016 bytes
+255 heads, 63 sectors/track, 60801 cylinders
+Units = cylinders of 16065 * 512 = 8225280 bytes
+Sector size (logical/physical): 512 bytes / 512 bytes
+I/O size (minimum/optimal): 512 bytes / 512 bytes
+Disk identifier: 0x0003f808
+
+  Device Boot      Start         End      Blocks   Id  System
+/dev/sda1   *           1          33      262144   83  Linux
+Partition 1 does not end on cylinder boundary.
+/dev/sda2              33        7682    61440000   8e  Linux LVM
+/dev/sda3            7682        7747      524288   82  Linux swap / Solaris
+
+# fdisk  /dev/sda		使用fdisk工具对/dev/sda磁盘进行管理（分区）
+Command (m for help): m
+Command action
+   a   toggle a bootable flag			
+   b   edit bsd disklabel
+   c   toggle the dos compatibility flag
+   d   delete a partition			
+   l   list known partition types			
+   m   print this menu
+   n   add a new partition			
+   o   create a new empty DOS partition table
+   p   print the partition table			
+   q   quit without saving changes		
+   s   create a new empty Sun disklabel
+   t   change a partition's system id		
+   u   change display/entry units
+   v   verify the partition table
+   w   write table to disk and exit		
+   x   extra functionality (experts only)
+
+主要了解一下几个：
+a     toggle a bootable flag			--表示一个分区作为引导分区
+d     delete a partition			--删除一个分区
+l      list known partition types			--列出已知的分区类型
+n     add a new partition			--增加一个分区
+p     print the partition table			--打印当前的分区表
+q     quit without saving changes		--不保存退出
+w    write table to disk and exit			--保存退出
+
+
+进入后的选项选择：
+
+Command (m for help): n	n 表示增加分区
+Command action
+   e   extended		这里的e表示创建扩展分区
+   p   primary partition (1-4)	这里的p表示主分区
+
+p
+Partition number (1-4): 1	这里的1-4表示选择第几个分区
+First cylinder (1-652, default 1): 	选择开始的块地址,直接回车默认就可以了
+Using default value 1
+Last cylinder, +cylinders or +size{K,M,G} (1-652, default 652): 		这里输入我们想要为该分区指定的大小（磁盘容量），格式 +1G、+500M、+10240K，输入分区容量大小后，回车，ok一个分区搞定，以此类推。
+
+
+Command (m for help): p	p 查看一下分区情况
+Disk /dev/sdc: 5368 MB, 5368709120 bytes
+255 heads, 63 sectors/track, 652 cylinders
+Units = cylinders of 16065 * 512 = 8225280 bytes
+Sector size (logical/physical): 512 bytes / 512 bytes
+I/O size (minimum/optimal): 512 bytes / 512 bytes
+Disk identifier: 0xd4a66feb
+
+   Device Boot      Start         End      Blocks   Id  System
+/dev/sdc1               1         132     1060258+  83  Linux
+
+Command (m for help): w	w 保存分区信息并退出
+
+我们可以使用命令查看一下刚才的分区是否有分成功：
+# ls /dev/sdc*
+/dev/sdc  /dev/sdc1*  	如果有显示内容，就说明我们的分区已经分好了！
+如果没有显示，运行下面的命令刷新一下分区信息：
+# partx -a /dev/sda		刷新系统分区表（告诉系统刚刚新建了一个分区让它识别）
+
+分好区了以后我们还无法直接使用该分区，还需要先将该分区进行格式化了才能使用！
+
+命令 mkfs	格式化磁盘命令
+
+选项：
+-t	指定格式化磁盘是为其指定文件系统类型
+
+例如：
+# mkfs -t ext4 /dev/sda5
+# mkfs.ext4 /dev/sdc1 		这两条命令都是将我们刚刚创建的新分区格式化
+
+现在已经将新建的分区格式化好了，但是还是不能使用，还需要挂载到我们的系统目录下才能使用！
+
+mount 命令	挂载（启用一个磁盘分区或文件）
+命令格式：
+# mount [选项]  挂载点  需挂载介质（磁盘或文件）
+
+选项：
+-o	用来描述设备或文件挂载方式，该选项拥有以下常用参数：
+	loop	将一个文件以硬盘分区的形式挂载到系统上
+	ro	使用只读的方式挂载
+	rw	使用可读可写的方式挂载
+例如：
+# mount		直接使用mount命令后面不加任何东西，查看当前系统中的挂载信息
+# mount /dev/sda1  /sda	将磁盘sdc1挂载到系统的/sdc目录下
+# mount -o loop /soft/CentOS6.5-x64.iso  /iso	将该文件以磁盘的方式挂载到系统的/iso目录下
+
+# mount  /dev/sdc1 /sdc	将我们前面已经格式化好的磁盘挂载到系统的sdc目录下
+
+挂载好以后我们可以使用命令查看是否挂载成功：
+# df -h  	查看当前哪些分区挂载到哪些目录的对应信息
+
+
+如何取消挂载：
+
+# umount /sdc	将在系统目录sdc上挂载好的磁盘取消挂载
+
+至此，我们的一个新建的分区就可以使用了！
+
+
+parted 命令	另一个磁盘管理工具，可用于msdos分区和GPT分区
+
+命令格式：
+# parted [需要管理的磁盘]  	后面如果不指定磁盘，则为系统中排列最前面的那个磁盘分区
+
+例如：
+
+# parted /dev/sdc	使用parted工具为sdc磁盘分区
+GNU Parted 2.1
+使用 /dev/sdc		--当前分区的磁盘
+Welcome to GNU Parted! Type 'help' to view a list of commands.
+(parted)     		--这后面输入命令
+
+help				查看帮助  
+mkpart				创建一个分区
+print				查看当前磁盘的分区信息
+quit                            退出程序
+rm  1				删除一个编号为1的分区（Number）
+				
+分区编号（Number）使用print选项可以查看到：							
+(parted) print
+Model: VMware, VMware Virtual S (scsi)
+Disk /dev/sdc: 21.5GB
+Sector size (logical/physical): 512B/512B
+Partition Table: pc98
+
+Number  Start   End     Size    File system  Name  标志
+ 1      1003MB  10.0GB  8998MB               sdc1  启动
+
+
+创建好分区以后，我们还是需要对新建的分区进行格式化和挂载才能正常使用！
+# partx -a /dev/sda		刷新系统分区表
+# mkfs.ext4 /dev/sdc1	格式化新分区
+# mount /dev/sdc1 /sdc	将新分区挂载到系统的/sdc目录下
+# df -h 			检查挂载情况
+
+
+
+
+
+手动添加系统的swap（交换分区）
+
+命令：
+
+# free -m 	查看当前系统的swap分区信息
+# mkswap	添加swap分区
+
+mkswap 命令使用格式：
+
+# mkswap /dev/sdc1	使用一个新建分区作为swap分区
+# mkswap /swapfile	使用一个二进制文件作为swap分区
+
+例如：
+使用新分区作为swap分区
+
+我们先新建一个分区出来：fdisk命令建立一个sdc1新分区大小为1G
+# mkswap /dev/sdc1 	使用sdc1分区作为swap分区
+# swapon /dev/sdc1	使上面的操作生效（启用新加入的swap分区容量）
+# free -m		再来查看一下现在的swap分区容量是否发生改变
+
+# swapoff /dev/sdc1	取消sdc1作为swap分区
+# free	-m		查看容量是否缩小
+
+使用二进制文件作为swap分区（二进制文件是无法使用cat和vim进行查看和编辑的）
+# dd if=/dev/zero of=/swapfile bs=1M count=1024		使用dd命令生成一个大小为1024M大小的二进制文件
+# mkswap /swapfile	将swapfile文件添加为swap分区
+# swapon /swapfile	使上面的操作生效
+# free -m		检查是否生效（容量是否变大）
+
+
+
+
+设置开机后自动挂载：
+上面的所有新建的分区挂载后都只是临时有效，系统重启后就会取消挂载
+
+# cat /etc/fstab		该文件就是存放系统开机自动挂载信息的
+UUID=b40cacb1-1178-4228-be06-e6d2f135b23e 	/                       ext4    defaults        1 1
+UUID=174c6b5a-0de6-469d-bc07-b38d4bfd3479 	/boot                   ext4    defaults        1 2
+UUID=d608f49e-d50c-41ad-bf9a-7f7a0ef8707d 	swap                    swap    defaults        0 0
+tmpfs                   	/dev/shm                tmpfs   defaults        0 0
+devpts                  	/dev/pts                devpts  gid=5,mode=620  0 0
+sysfs                   	/sys                    sysfs   defaults        0 0
+proc                    	/proc                   proc    defaults        0 0
+
+
+第一列：分区号或者标签号或者uuid（分区号：sda1 sda2等 标签号：看下面的笔记 uuid：看下面的笔记）
+第二列：挂载点
+第三列：挂载类型
+第四列：挂载参数
+第五列：是否扫描
+第六列：扫描级别
+
+如何查看磁盘的标签号呢？标签号是自定义出来的！
+# e2label /dev/sdc1	查看sdc1分区的标签号
+e2label: Bad magic number in super-block 当尝试打开 /dev/sdc1 时找不到有效的文件系统超级块.（因为我们还没有给它定义标签号）
+# e2label /dev/sdc1 /abc	把/dev/sdc1的标签号设置为/abc
+# e2label /dev/sdc1	
+/abc				这个就是sdc1分区的标签号了
+
+磁盘uuid
+
+# blkid 		  	查看所有分区设备的uuid
+# blkid	/dev/sdc1		指定查看/dev/sda1分区的uuid
+/dev/sda1: LABEL="/vm" UUID="174c6b5a-0de6-469d-bc07-b38d4bfd3479" TYPE="ext4"
+
+第一列我要写sdc1这个设备就可以有如下写法:
+/dev/sdc1	/sdc	ext4	defaults  0  0
+LABEL=/abc	/sdc	ext4	defaults  0  0
+UUID=174c6b5a-0de6-469d-bc07-b38d4bfd3479	/sdc	ext4	defauts	0 0
+
+
+思考题：
+1,rm -rf /etc/fstab，没有了fstab文件,重启系统会怎么样?我们该怎么办？
+
+2，故意到/etc/fstab里倒数第二列为0的行去改错uuid或者设备名，重启会怎么样?
+
+
+
+linux运行级别
+
+# vim /etc/inittab
+
+
+# Default runlevel. The runlevels used by RHS are:
+#   0 - halt (Do NOT set initdefault to this)				--关机
+#   1 - Single user mode						--单用户模式
+#   2 - Multiuser, without NFS (The same as 3, if you do not have networking)	--多用户模式，但没有NFS，没有网络
+#   3 - Full multiuser mode				--带网络的文本多用户模式，如果3模式没有网络的话就和2模式一样
+#   4 - unused						--保留
+#   5 - X11						--图形模式
+#   6 - reboot (Do NOT set initdefault to this)		--重启
+# 
+id:5:initdefault:	--设定开机后默认的启动级别，不要设成0或者6，如果设成0或者6致命开机不了，在grub的选择界面按E编辑这一次启动进入5模式（临时，只对这次进系统有效），进入后再修改/etc/initab(这是永久生效）
+
+
+
+# runlevel 		查看当前的系统启动级别
+N 5			表示第一次启动的级别为5
+
+使用ctrl+alt+F2切换登录后，再使用runlevel看到还是5级别
+
+# init 3		用这个命令完全切换到3级别
+
+# runlevel 	
+5 3			表示由5级别切成3级别
+
+切换为3级别后使用ctrl+alt+F1也切换不回来图形了，因为已经是完全的3级别了
+在3级别要启动图形startx或gdm请使用命令# init 5
+
+
+
+
+文件系统概念和文件类型
+磁盘上的文件系统是层次的结构，由目录和子目录组成，最底层的目录称为根（root）目录
+
+	windows文件系统
+	硬盘
+	├── C:\					分区
+	├── D:\					分区
+	├── E:\					分区
+	└── F:\					分区
+	
+	linux文件系统：
+	树状目录结构 
+
+
+		/etc/skel	/etc/ssl  等等 	
+		｜－－－－－－－－｜	
+			 ｜
+	bin	sbin etc home	var	tmp	root	dev 等等 
+	 |	｜	｜	｜	｜	｜	｜	｜
+	 |－－－－－－－－－－－－－－－－－－－－－－－－－－－－－－－－－ - -｜
+				  			｜	
+				 			 ／根目录 
+
+
+文件系统概念
+文件系统：磁盘上有特定格式的一片区域，操作系统通过文件系统方便地查询和访问其中所包含的磁盘块
+文件：文件系统中存储数据的一个命名对象，一个文件可以是空的，但是它仍然为操作系统提供了其他信息
+目录：包含许多文件项目的一个特殊文件，目录是支持文件系统的层次结构，文件系统中的每一个文件都登记在一个目录或者多个目录中
+子目录：被包含在目录中的目录
+文件名：标记文件的字符串
+路径名：用（/）结合多个文件名的集合
+/etc/passwd
+
+文件结构
+	文件成分（内容）
+	i节点
+	数据
+	命名文件 （最多255个字符）
+
+目录存放的内容
+	bin:(binary)放命令文件，一般是普通用户能使用的命令
+	sbin: 放命令，是管理员（root）使用的命令
+	usr:放用户数据的（编译安装的软件，用户的软件源码，等等）
+	dev:设备目录（linux下有一句话可以这样说，任何设备都是文件)
+		计算机的物理硬件都对应一个或多个文件。
+		/dev/pts			pts终端
+		/dev/tty			tty终端(w,who am i,tty)
+		/dev/ram			内存条
+		/dev/input		输入设备
+		/dev/sda			硬盘
+		/dev/sda1			第一个分区
+		/dev/stdin			标准输入设备(键盘)
+		/dev/stdout		标准输出设备(显示器)
+		/dev/stderr		标准输出设备(显示器)
+
+	lib或lib64:放库文件(.so动态库文件  .a静态库文件)(C:\WINDOWS\system32下的.dll)
+	root:超级管理员的家目录
+	home:其它普通用户的家目录
+	tmp:临时目录，存放很多软件运行的一些临时文件(这个目录所有都可以使用，权限是1777)
+	boot:存放开机启动有关的一些文件(单独分区)
+	etc:大部分的软件的配置文件和操作系统的配置文件都存放在这
+
+	proc: 这两个是伪文件系统，记录系统动态的一些信息（当前系统的各种状态，系统自动维护，无需干预)
+	sys:
+	(以前就只有一个proc，现在分成了两个proc就是processes的缩写，sys是system的缩写)
+
+	var:一个比较综合的目录，存放了日志，pid文件，邮件等等(variable，可变的)
+	selinux:存放selinux(security enhanced linux)规则的目录
+
+	mnt		nfs --------
+				|
+	media		u盘 ------------> 三个空目录，一般用于挂载用的(外设：u盘，移动硬盘)
+				|	
+	misc		光盘 -------
+	
+	opt	空目录，用于安装扩展软件包(optional)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
